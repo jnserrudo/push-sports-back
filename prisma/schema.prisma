@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Usuario {
+  id_usuario           String    @id @default(uuid()) @db.Uuid
+  nombre               String
+  apellido             String
+  username             String    @unique
+  email                String    @unique
+  password_hash        String
+  id_rol               Int
+  id_comercio_asignado String?   @db.Uuid
+  activo               Boolean   @default(true)
+
+  rol                  Rol       @relation(fields: [id_rol], references: [id_rol])
+  comercio_asignado    Comercio? @relation(fields: [id_comercio_asignado], references: [id_comercio])
+
+  notificaciones       Notificacion[]
+  ventas_procesadas    VentaCabecera[]
+  movimientos_autorizados MovimientoStock[]
+  auditorias_rastreadas AuditoriaSistema[]
+
+  @@map("USUARIOS")
+}
+
+model Rol {
+  id_rol       Int       @id @default(autoincrement())
+  nombre_rol   String
+  descripcion  String?
+
+  usuarios     Usuario[]
+
+  @@map("ROLES")
+}
+
+model Notificacion {
+  id_notificacion String   @id @default(uuid()) @db.Uuid
+  id_usuario      String   @db.Uuid
+  titulo          String
+  mensaje         String   @db.Text
+  tipo            String
+  leido           Boolean  @default(false)
+  fecha_envio     DateTime @default(now())
+
+  usuario         Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@map("NOTIFICACIONES")
+}
+
+model Producto {
+  id_producto           String   @id @default(uuid()) @db.Uuid
+  nombre                String
+  codigo_barras         String   @unique
+  id_categoria          Int
+  id_marca              Int
+  id_proveedor          String   @db.Uuid
+  precio_venta_sugerido Decimal  @db.Decimal(10, 2)
+  costo_compra          Decimal  @db.Decimal(10, 2)
+  imagen_url            String?
+  activo                Boolean  @default(true)
+
+  categoria             Categoria @relation(fields: [id_categoria], references: [id_categoria])
+  marca                 Marca    @relation(fields: [id_marca], references: [id_marca])
+  proveedor             Proveedor @relation(fields: [id_proveedor], references: [id_proveedor])
+
+  inventarios           InventarioComercio[]
+  ventas_detalle        VentaDetalle[]
+  movimientos           MovimientoStock[]
+
+  @@map("PRODUCTOS")
+}
+
+model Categoria {
+  id_categoria Int      @id @default(autoincrement())
+  nombre       String
+  descripcion  String?
+
+  productos    Producto[]
+
+  @@map("CATEGORIAS")
+}
+
+model Marca {
+  id_marca     Int      @id @default(autoincrement())
+  nombre_marca String
+
+  productos    Producto[]
+
+  @@map("MARCAS")
+}
+
+model Proveedor {
+  id_proveedor     String   @id @default(uuid()) @db.Uuid
+  nombre_proveedor String
+  telefono         String?
+  razon_social     String?
+  cuit             String?
+  activo           Boolean   @default(true)
+
+  productos        Producto[]
+
+  @@map("PROVEEDORES")
+}
+
+model Comercio {
+  id_comercio          String   @id @default(uuid()) @db.Uuid
+  nombre               String
+  id_tipo_comercio     Int
+  direccion            String?
+  latitud              Decimal? @db.Decimal(10, 8)
+  longitud             Decimal? @db.Decimal(11, 8)
+  imagen_url           String?
+  saldo_acumulado_mili Decimal  @default(0) @db.Decimal(20, 2)
+  activo               Boolean  @default(true)
+
+  tipo_comercio        TipoComercio @relation(fields: [id_tipo_comercio], references: [id_tipo_comercio])
+
+  usuarios_asignados   Usuario[]
+  inventarios          InventarioComercio[]
+  ventas_registradas   VentaCabecera[]
+  liquidaciones_cierre Liquidacion[]
+  movimientos_stock    MovimientoStock[]
+
+  @@map("COMERCIOS")
+}
+
+model TipoComercio {
+  id_tipo_comercio Int        @id @default(autoincrement())
+  nombre           String
+  descripcion      String?
+
+  comercios        Comercio[]
+
+  @@map("TIPOS_COMERCIO")
+}
+
+model InventarioComercio {
+  id_inventario               String   @id @default(uuid()) @db.Uuid
+  id_comercio                 String   @db.Uuid
+  id_producto                 String   @db.Uuid
+  cantidad_actual             Int      @default(0)
+  stock_minimo_alerta         Int      @default(5)
+  comision_pactada_porcentaje Decimal  @db.Decimal(5, 2)
+
+  comercio                    Comercio @relation(fields: [id_comercio], references: [id_comercio])
+  producto                    Producto @relation(fields: [id_producto], references: [id_producto])
+
+  @@unique([id_comercio, id_producto])
+  @@map("INVENTARIO_COMERCIO")
+}
+
+model TipoMovimiento {
+  id_tipo_movimiento    Int      @id @default(autoincrement())
+  nombre_movimiento     String
+  factor_multiplicador  Int      @default(1)
+
+  movimientos           MovimientoStock[]
+
+  @@map("TIPOS_MOVIMIENTO")
+}
+
+model MovimientoStock {
+  id_movimiento      String   @id @default(uuid()) @db.Uuid
+  id_producto        String   @db.Uuid
+  id_comercio        String   @db.Uuid
+  id_usuario         String   @db.Uuid
+  id_tipo_movimiento Int
+  cantidad_cambio    Int
+  saldo_anterior     Int
+  saldo_posterior    Int
+  fecha_hora         DateTime @default(now())
+
+  producto           Producto @relation(fields: [id_producto], references: [id_producto])
+  comercio           Comercio @relation(fields: [id_comercio], references: [id_comercio])
+  usuario            Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+  tipo_movimiento    TipoMovimiento @relation(fields: [id_tipo_movimiento], references: [id_tipo_movimiento])
+
+  @@map("MOVIMIENTOS_STOCK")
+}
+
+model VentaCabecera {
+  id_venta         String   @id @default(uuid()) @db.Uuid
+  id_comercio      String   @db.Uuid
+  id_usuario       String   @db.Uuid
+  id_liquidacion   String?  @db.Uuid
+  total_venta      Decimal  @db.Decimal(10, 2)
+  metodo_pago      String
+  fecha_hora       DateTime @default(now())
+
+  comercio         Comercio     @relation(fields: [id_comercio], references: [id_comercio])
+  usuario          Usuario      @relation(fields: [id_usuario], references: [id_usuario])
+  liquidacion      Liquidacion? @relation(fields: [id_liquidacion], references: [id_liquidacion])
+  detalles         VentaDetalle[]
+
+  @@map("VENTAS_CABECERA")
+}
+
+model VentaDetalle {
+  id_detalle               String   @id @default(uuid()) @db.Uuid
+  id_venta                 String   @db.Uuid
+  id_producto              String   @db.Uuid
+  cantidad                 Int
+  precio_unitario_cobrado  Decimal  @db.Decimal(10, 2)
+  costo_unitario_historico Decimal  @db.Decimal(10, 2)
+  subtotal                 Decimal  @db.Decimal(10, 2)
+  comision_monto_historico Decimal  @db.Decimal(10, 2)
+  neto_mili_historico      Decimal  @db.Decimal(10, 2)
+
+  venta                    VentaCabecera @relation(fields: [id_venta], references: [id_venta])
+  producto                 Producto      @relation(fields: [id_producto], references: [id_producto])
+
+  @@map("VENTAS_DETALLE")
+}
+
+model Liquidacion {
+  id_liquidacion     String   @id @default(uuid()) @db.Uuid
+  id_comercio        String   @db.Uuid
+  fecha_cierre       DateTime @default(now())
+  total_ventas_netas Decimal  @db.Decimal(10, 2)
+  monto_recibido     Decimal  @db.Decimal(10, 2)
+  diferencia         Decimal  @db.Decimal(10, 2)
+  observacion        String?  @db.Text
+  estado             String
+
+  comercio           Comercio @relation(fields: [id_comercio], references: [id_comercio])
+  ventas             VentaCabecera[]
+
+  @@map("LIQUIDACIONES")
+}
+
+model AuditoriaSistema {
+  id_auditoria     String   @id @default(uuid()) @db.Uuid
+  id_usuario       String   @db.Uuid
+  entidad_afectada String
+  accion           String
+  valor_anterior   String?  @db.Text
+  valor_nuevo      String?  @db.Text
+  fecha_hora       DateTime @default(now())
+
+  usuario          Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@map("AUDITORIA_SISTEMA")
+}
