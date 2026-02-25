@@ -46,11 +46,16 @@ router.post('/register', async (req, res) => {
 // LOGIN
 router.post('/login', async (req, res) => {
     try {
-        const { identifier, password } = req.body; // identificador puede ser username o email
+        const { identifier, email, username, password } = req.body;
+        const loginId = identifier || email || username;
+
+        if (!loginId || !password) {
+            return res.status(400).json({ error: 'Falta identificador (email/username) o contraseña' });
+        }
 
         const usuario = await prisma.usuario.findFirst({
             where: {
-                OR: [{ email: identifier }, { username: identifier }],
+                OR: [{ email: loginId }, { username: loginId }],
                 activo: true
             },
             include: { rol: true }

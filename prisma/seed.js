@@ -87,6 +87,55 @@ async function main() {
     });
   }
   console.log('Categorías y marcas creadas.');
+ 
+  // 5. USUARIO INICIAL (ADMIN)
+  const salt = await require('bcryptjs').genSalt(10);
+  const password_hash = await require('bcryptjs').hash('admin123', salt);
+
+  await prisma.usuario.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      nombre: 'Admin',
+      apellido: 'Principal',
+      username: 'admin',
+      email: 'admin@pushsports.com',
+      password_hash: password_hash,
+      id_rol: 1, // SUPER_ADMIN
+      activo: true
+    }
+  });
+  console.log('Usuario Admin creado (user: admin, pass: admin123).');
+
+  // 6. COMERCIO Y SUPERVISOR DE PRUEBA
+  const comercioTest = await prisma.comercio.upsert({
+    where: { id_comercio: '00000000-0000-0000-0000-000000000001' }, // ID fijo para pruebas
+    update: {},
+    create: {
+      id_comercio: '00000000-0000-0000-0000-000000000001',
+      nombre: 'Sucursal Centro (Test)',
+      id_tipo_comercio: 1,
+      direccion: 'Av. Siempre Viva 123',
+      activo: true
+    }
+  });
+
+  const passSupervisor = await require('bcryptjs').hash('supervisor123', salt);
+  await prisma.usuario.upsert({
+    where: { username: 'supervisor' },
+    update: {},
+    create: {
+      nombre: 'Supervisor',
+      apellido: 'De Prueba',
+      username: 'supervisor',
+      email: 'supervisor@test.com',
+      password_hash: passSupervisor,
+      id_rol: 2, // SUPERVISOR
+      id_comercio_asignado: comercioTest.id_comercio,
+      activo: true
+    }
+  });
+  console.log('Comercio y Supervisor de prueba creados (user: supervisor, pass: supervisor123).');
 
   console.log('Seed finalizado con éxito.');
 }

@@ -47,7 +47,7 @@ app.use('/api/inventarios', inventoryRoutes);
 app.use('/api/notificaciones', notificationRoutes);
 app.use('/api/movimientos', historyRoutes);
 app.use('/api/auditoria', auditRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api', authRoutes);
 
 // Start Server
 const PORT = process.env.PORT || 3000;
