@@ -35,6 +35,9 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const historyRoutes = require('./src/routes/historyRoutes');
 const auditRoutes = require('./src/routes/auditRoutes');
 const authRoutes = require('./src/routes/authRoutes');
+const discountRoutes = require('./src/routes/discountRoutes');
+const offerRoutes = require('./src/routes/offerRoutes');
+const comboRoutes = require('./src/routes/comboRoutes');
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -47,6 +50,9 @@ app.use('/api/inventarios', inventoryRoutes);
 app.use('/api/notificaciones', notificationRoutes);
 app.use('/api/movimientos', historyRoutes);
 app.use('/api/auditoria', auditRoutes);
+app.use('/api/descuentos', discountRoutes);
+app.use('/api/ofertas', offerRoutes);
+app.use('/api/combos', comboRoutes);
 app.use('/api', authRoutes);
 
 // Start Server

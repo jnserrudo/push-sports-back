@@ -29,7 +29,7 @@ router.get('/usuario/:id_usuario', async (req, res) => {
     }
 });
 
-// Marcar como leída
+// Marcar una como leída
 router.put('/:id/leido', async (req, res) => {
     try {
         const { id } = req.params;
@@ -40,6 +40,19 @@ router.put('/:id/leido', async (req, res) => {
         res.json(notificacion);
     } catch (error) {
         res.status(500).json({ error: 'Error al actualizar notificación' });
+    }
+});
+
+// Marcar todas como leídas
+router.patch('/leer-todas', async (req, res) => {
+    try {
+        await prisma.notificacion.updateMany({
+            where: { leido: false },
+            data: { leido: true }
+        });
+        res.json({ message: 'Todas las notificaciones marcadas como leídas' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al marcar todas como leídas' });
     }
 });
 

@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const inventoryService = require('../services/inventoryService');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
+const { notifyCommerceManagers } = require('../services/notificationService');
 
 // Endpoint para registrar una venta con múltiples productos
 router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => {
@@ -99,6 +100,13 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              }
 
              return { ventaCabecera: nuevaVenta, detallesCount: detallesProcesados.length };
+        });
+
+        // 4. Notificar al manager
+        await notifyCommerceManagers(id_comercio, {
+            titulo: 'Nueva Venta Procesada',
+            mensaje: `Se ha registrado una venta por AR$ ${total_venta_cabecera.toLocaleString()} (${metodo_pago}).`,
+            tipo: 'VENTA'
         });
 
         res.status(201).json({ message: 'Venta registrada con éxito', data: result });

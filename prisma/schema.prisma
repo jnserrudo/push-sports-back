@@ -55,20 +55,21 @@ model Notificacion {
 }
 
 model Producto {
-  id_producto           String   @id @default(uuid()) @db.Uuid
+  id_producto           String    @id @default(uuid()) @db.Uuid
   nombre                String
-  codigo_barras         String   @unique
+  descripcion           String?   @db.Text
   id_categoria          Int
   id_marca              Int
-  id_proveedor          String   @db.Uuid
-  precio_venta_sugerido Decimal  @db.Decimal(10, 2)
-  costo_compra          Decimal  @db.Decimal(10, 2)
-  imagen_url            String?
-  activo                Boolean  @default(true)
+  id_proveedor          String?   @db.Uuid
+  precio_venta_sugerido Decimal   @db.Decimal(10, 2)
+  costo_compra          Decimal   @db.Decimal(10, 2)
+  imagen_url            String?   @db.Text
+  stock_minimo          Int       @default(5)
+  activo                Boolean   @default(true)
 
-  categoria             Categoria @relation(fields: [id_categoria], references: [id_categoria])
-  marca                 Marca    @relation(fields: [id_marca], references: [id_marca])
-  proveedor             Proveedor @relation(fields: [id_proveedor], references: [id_proveedor])
+  categoria             Categoria  @relation(fields: [id_categoria], references: [id_categoria])
+  marca                 Marca      @relation(fields: [id_marca], references: [id_marca])
+  proveedor             Proveedor? @relation(fields: [id_proveedor], references: [id_proveedor])
 
   inventarios           InventarioComercio[]
   ventas_detalle        VentaDetalle[]
@@ -247,4 +248,40 @@ model AuditoriaSistema {
   usuario          Usuario  @relation(fields: [id_usuario], references: [id_usuario])
 
   @@map("AUDITORIA_SISTEMA")
+}
+
+model Descuento {
+  id_descuento     String   @id @default(uuid()) @db.Uuid
+  codigo           String   @unique
+  tipo_descuento   String   @default("porcentaje") // "porcentaje" o "fijo"
+  valor_descuento  Decimal  @db.Decimal(10, 2)
+  usos_actuales    Int      @default(0)
+  usos_maximos     Int?
+  activo           Boolean  @default(true)
+  fecha_creacion   DateTime @default(now())
+
+  @@map("DESCUENTOS")
+}
+
+model Oferta {
+  id_oferta             String    @id @default(uuid()) @db.Uuid
+  nombre                String
+  descuento_porcentaje  Decimal   @db.Decimal(5, 2)
+  fecha_inicio          DateTime
+  fecha_fin             DateTime?
+  activo                Boolean   @default(true)
+  fecha_creacion        DateTime  @default(now())
+
+  @@map("OFERTAS")
+}
+
+model Combo {
+  id_combo        String   @id @default(uuid()) @db.Uuid
+  nombre          String
+  descripcion     String?  @db.Text
+  precio_combo    Decimal  @db.Decimal(10, 2)
+  activo          Boolean  @default(true)
+  fecha_creacion  DateTime @default(now())
+
+  @@map("COMBOS")
 }

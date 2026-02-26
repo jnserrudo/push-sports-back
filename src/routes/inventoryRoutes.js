@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
+const { notifyCommerceManagers } = require('../services/notificationService');
 
 // Listar inventario de un comercio
 // SI es Supervisor (2) o Vendedor (3), solo puede ver el suyo.
@@ -44,8 +45,18 @@ router.put('/:id_inventario', authMiddleware, roleMiddleware([1, 2]), async (req
                 stock_minimo_alerta: stock_minimo_alerta !== undefined ? parseInt(stock_minimo_alerta) : undefined,
                 comision_pactada_porcentaje: comision_pactada_porcentaje !== undefined ? parseFloat(comision_pactada_porcentaje) : undefined,
                 cantidad_actual: cantidad_actual !== undefined ? parseInt(cantidad_actual) : undefined
-            }
+            },
+            include: { producto: true }
         });
+
+        // Alerta de stock bajo si se actualizó la cantidad
+        if (cantidad_actual !== undefined && cantidad_actual <= updated.stock_minimo_alerta) {
+            await notifyCommerceManagers(updated.id_comercio, {
+                titulo: 'Alerta: Stock Bajo',
+                mensaje: `El producto "${updated.producto.nombre}" ha llegado al límite mínimo (${cantidad_actual} unidades) en tu sede.`,
+                tipo: 'COMMERCE'
+            });
+        }
 
         res.json(updated);
     } catch (error) {
@@ -66,7 +77,15 @@ router.post('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 stock_minimo_alerta: stock_minimo_alerta ? parseInt(stock_minimo_alerta) : 5,
                 comision_pactada_porcentaje: comision_pactada_porcentaje ? parseFloat(comision_pactada_porcentaje) : 0,
                 cantidad_actual: cantidad_actual ? parseInt(cantidad_actual) : 0
-            }
+            },
+            include: { producto: true }
+        });
+
+        // Notificar a los managers de la sede
+        await notifyCommerceManagers(id_comercio, {
+            titulo: 'Nuevo Producto Asignado',
+            mensaje: `Se ha asignado el producto "${inv.producto.nombre}" a tu sede con un stock inicial de ${inv.cantidad_actual} unidades.`,
+            tipo: 'COMMERCE'
         });
 
         res.status(201).json(inv);

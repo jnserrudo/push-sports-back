@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const bcrypt = require('bcryptjs');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
+const { createNotification } = require('../services/notificationService');
 
 // Listar usuarios (solo activos por defecto)
 router.get('/', authMiddleware, async (req, res) => {
@@ -47,6 +48,18 @@ router.post('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
         });
 
         const { password_hash: _, ...userWithoutPass } = usuario;
+
+        // Notificar al usuario si tiene comercio asignado
+        if (id_comercio_asignado) {
+            const commerce = await prisma.comercio.findUnique({ where: { id_comercio: id_comercio_asignado } });
+            await createNotification({
+                id_usuario: usuario.id_usuario,
+                titulo: 'Nueva Sede Asignada',
+                mensaje: `Se te ha asignado a la sede "${commerce?.nombre || 'Sucursal'}". Ya puedes operar en esta unidad.`,
+                tipo: 'COMMERCE'
+            });
+        }
+
         res.status(201).json(userWithoutPass);
     } catch (error) {
         console.error(error);
@@ -80,6 +93,17 @@ router.put('/:id', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 activo
             }
         });
+
+        // Notificar si cambió el comercio asignado
+        if (id_comercio_asignado && id_comercio_asignado !== usuarioStatus.id_comercio_asignado) {
+            const commerce = await prisma.comercio.findUnique({ where: { id_comercio: id_comercio_asignado } });
+            await createNotification({
+                id_usuario: id,
+                titulo: 'Sede Actualizada',
+                mensaje: `Se ha actualizado tu asignación a la sede "${commerce?.nombre || 'Sucursal'}".`,
+                tipo: 'COMMERCE'
+            });
+        }
 
         res.json(usuario);
     } catch (error) {
