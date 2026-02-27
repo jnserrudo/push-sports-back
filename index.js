@@ -38,6 +38,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const discountRoutes = require('./src/routes/discountRoutes');
 const offerRoutes = require('./src/routes/offerRoutes');
 const comboRoutes = require('./src/routes/comboRoutes');
+const returnsRoutes = require('./src/routes/returnsRoutes');
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -53,7 +54,21 @@ app.use('/api/auditoria', auditRoutes);
 app.use('/api/descuentos', discountRoutes);
 app.use('/api/ofertas', offerRoutes);
 app.use('/api/combos', comboRoutes);
+app.use('/api/devoluciones', returnsRoutes);
 app.use('/api', authRoutes);
+
+// Configuración de Swagger
+const fs = require('fs');
+const swaggerUi = require('swagger-ui-express');
+const swaggerFile = './swagger-output.json';
+
+if (fs.existsSync(swaggerFile)) {
+    const swaggerDocument = require(swaggerFile);
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, { explorer: true }));
+    console.log('Swagger UI inicializado en /api-docs');
+} else {
+    console.warn('¡Atención!: Archivo swagger-output.json no encontrado. Ejecuta "npm run swagger" para autogenerarlo.');
+}
 
 // Start Server
 const PORT = process.env.PORT || 3000;

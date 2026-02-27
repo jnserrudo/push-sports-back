@@ -1,0 +1,1495 @@
+openapi: 3.0.0
+info:
+  title: Push Sports API
+  description: >-
+    Documentación Oficial del Backend de Push Sports. ERD v2 y RBAC
+    implementado.
+  version: 2.0.0
+servers:
+  - url: http://localhost:3000/api
+    description: Servidor Local
+paths:
+  /health:
+    get:
+      description: ''
+      responses:
+        '200':
+          description: OK
+  /api/ventas/:
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_comercio:
+                  example: any
+                detalles:
+                  example: any
+                metodo_pago:
+                  example: any
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/liquidaciones/:
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_comercio:
+                  example: any
+                observacion:
+                  example: any
+  /api/liquidaciones/{id_comercio}:
+    get:
+      description: ''
+      parameters:
+        - name: id_comercio
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/productos/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                descripcion:
+                  example: any
+                id_categoria:
+                  example: any
+                id_marca:
+                  example: any
+                id_proveedor:
+                  example: any
+                precio_venta_sugerido:
+                  example: any
+                costo_compra:
+                  example: any
+                imagen_url:
+                  example: any
+                stock_minimo:
+                  example: any
+  /api/productos/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                descripcion:
+                  example: any
+                id_categoria:
+                  example: any
+                id_marca:
+                  example: any
+                id_proveedor:
+                  example: any
+                precio_venta_sugerido:
+                  example: any
+                costo_compra:
+                  example: any
+                imagen_url:
+                  example: any
+                stock_minimo:
+                  example: any
+                activo:
+                  example: any
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/usuarios/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                apellido:
+                  example: any
+                username:
+                  example: any
+                email:
+                  example: any
+                password:
+                  example: any
+                id_rol:
+                  example: any
+                id_comercio_asignado:
+                  example: any
+  /api/usuarios/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                apellido:
+                  example: any
+                username:
+                  example: any
+                email:
+                  example: any
+                id_rol:
+                  example: any
+                id_comercio_asignado:
+                  example: any
+                activo:
+                  example: any
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/comercios/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/comercios/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/proveedores/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/proveedores/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/categorias:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/categorias/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/marcas:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/marcas/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/tipos-comercio:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/tipos-comercio/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/tipos-movimiento:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/catalogos/tipos-movimiento/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/inventarios/{id_comercio}:
+    get:
+      description: ''
+      parameters:
+        - name: id_comercio
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/inventarios/{id_inventario}:
+    put:
+      description: ''
+      parameters:
+        - name: id_inventario
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stock_minimo_alerta:
+                  example: any
+                comision_pactada_porcentaje:
+                  example: any
+                cantidad_actual:
+                  example: any
+    delete:
+      description: ''
+      parameters:
+        - name: id_inventario
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/inventarios/:
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_comercio:
+                  example: any
+                id_producto:
+                  example: any
+                stock_minimo_alerta:
+                  example: any
+                comision_pactada_porcentaje:
+                  example: any
+                cantidad_actual:
+                  example: any
+  /api/notificaciones/:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/notificaciones/usuario/{id_usuario}:
+    get:
+      description: ''
+      parameters:
+        - name: id_usuario
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/notificaciones/{id}/leido:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+  /api/notificaciones/leer-todas:
+    patch:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/movimientos/:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_comercio:
+                  example: any
+                id_producto:
+                  example: any
+                cantidad_cambio:
+                  example: any
+                id_tipo_movimiento:
+                  example: any
+  /api/movimientos/comercio/{id_comercio}:
+    get:
+      description: ''
+      parameters:
+        - name: id_comercio
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/auditoria/:
+    get:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/auditoria/entidad/{nombre}:
+    get:
+      description: ''
+      parameters:
+        - name: nombre
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/descuentos/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                codigo:
+                  example: any
+                tipo_descuento:
+                  example: any
+                valor_descuento:
+                  example: any
+                usos_maximos:
+                  example: any
+  /api/descuentos/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                codigo:
+                  example: any
+                valor_descuento:
+                  example: any
+                usos_maximos:
+                  example: any
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/ofertas/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                descuento_porcentaje:
+                  example: any
+                fecha_inicio:
+                  example: any
+                fecha_fin:
+                  example: any
+  /api/ofertas/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/combos/:
+    get:
+      description: ''
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    post:
+      description: ''
+      parameters:
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                descripcion:
+                  example: any
+                precio_combo:
+                  example: any
+  /api/combos/{id}:
+    put:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+    delete:
+      description: ''
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+  /api/register:
+    post:
+      description: ''
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre:
+                  example: any
+                apellido:
+                  example: any
+                username:
+                  example: any
+                email:
+                  example: any
+                password:
+                  example: any
+  /api/login:
+    post:
+      description: ''
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifier:
+                  example: any
+                email:
+                  example: any
+                username:
+                  example: any
+                password:
+                  example: any
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []

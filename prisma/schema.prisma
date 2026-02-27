@@ -26,6 +26,7 @@ model Usuario {
   ventas_procesadas    VentaCabecera[]
   movimientos_autorizados MovimientoStock[]
   auditorias_rastreadas AuditoriaSistema[]
+  devoluciones         Devolucion[]
 
   @@map("USUARIOS")
 }
@@ -74,6 +75,7 @@ model Producto {
   inventarios           InventarioComercio[]
   ventas_detalle        VentaDetalle[]
   movimientos           MovimientoStock[]
+  devoluciones          Devolucion[]
 
   @@map("PRODUCTOS")
 }
@@ -128,6 +130,7 @@ model Comercio {
   ventas_registradas   VentaCabecera[]
   liquidaciones_cierre Liquidacion[]
   movimientos_stock    MovimientoStock[]
+  devoluciones         Devolucion[]
 
   @@map("COMERCIOS")
 }
@@ -199,6 +202,7 @@ model VentaCabecera {
   usuario          Usuario      @relation(fields: [id_usuario], references: [id_usuario])
   liquidacion      Liquidacion? @relation(fields: [id_liquidacion], references: [id_liquidacion])
   detalles         VentaDetalle[]
+  devoluciones     Devolucion[]
 
   @@map("VENTAS_CABECERA")
 }
@@ -284,4 +288,23 @@ model Combo {
   fecha_creacion  DateTime @default(now())
 
   @@map("COMBOS")
+}
+
+model Devolucion {
+  id_devolucion   Int      @id @default(autoincrement())
+  id_venta        String   @db.Uuid
+  id_producto     String   @db.Uuid
+  cantidad        Int
+  monto_reembolso Decimal  @db.Decimal(10, 2)
+  motivo          String?  @db.Text
+  fecha           DateTime @default(now())
+  id_usuario      String   @db.Uuid
+  id_comercio     String   @db.Uuid
+
+  venta    VentaCabecera @relation(fields: [id_venta], references: [id_venta])
+  producto Producto      @relation(fields: [id_producto], references: [id_producto])
+  usuario  Usuario       @relation(fields: [id_usuario], references: [id_usuario])
+  comercio Comercio      @relation(fields: [id_comercio], references: [id_comercio])
+
+  @@map("DEVOLUCIONES")
 }

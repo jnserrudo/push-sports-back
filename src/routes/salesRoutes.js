@@ -89,15 +89,29 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              });
 
              // 3c. Actualizar Stock y registrar Movimientos (Kardex)
+             // tipo_movimiento: 2 = "Venta" (factor_multiplicador: -1)
+             let totalNeto = 0;
              for (const det of detallesProcesados) {
                  await inventoryService.updateStock({
                      id_comercio,
                      id_producto: det.id_producto,
                      id_usuario,
-                     id_tipo_movimiento: 2, 
-                     cantidad_cambio: -det.cantidad
+                     id_tipo_movimiento: 2,
+                     cantidad_cambio: det.cantidad
                  }, tx);
+                 totalNeto += parseFloat(det.neto_mili_historico);
              }
+
+             // 3d. Acumular el saldo neto de la venta en el Comercio
+             //     Este campo es luego zerado cuando se genera una Liquidacion.
+             await tx.comercio.update({
+                 where: { id_comercio },
+                 data: {
+                     saldo_acumulado_mili: {
+                         increment: totalNeto
+                     }
+                 }
+             });
 
              return { ventaCabecera: nuevaVenta, detallesCount: detallesProcesados.length };
         });

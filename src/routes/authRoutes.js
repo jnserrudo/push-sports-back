@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { notifyAdmins } = require('../services/notificationService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supers3cr3t';
 
@@ -36,6 +37,14 @@ router.post('/register', async (req, res) => {
         });
 
         const { password_hash: _, ...userWithoutPass } = usuario;
+
+        // Notificar a los administradores del nuevo registro
+        await notifyAdmins({
+            titulo: 'Nuevo Registro Público',
+            mensaje: `El usuario ${nombre} ${apellido} (${email}) se ha registrado en la plataforma. Espera asignación de rol y sede.`,
+            tipo: 'SYSTEM'
+        });
+
         res.status(201).json(userWithoutPass);
     } catch (error) {
         console.error(error);

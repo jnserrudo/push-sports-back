@@ -39,7 +39,7 @@ router.post('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
             data: {
                 nombre,
                 apellido,
-                username,
+                username: username || email, // Fallback si no hay username en el formulario
                 email,
                 password_hash,
                 id_rol: parseInt(id_rol),
@@ -102,6 +102,16 @@ router.put('/:id', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 titulo: 'Sede Actualizada',
                 mensaje: `Se ha actualizado tu asignación a la sede "${commerce?.nombre || 'Sucursal'}".`,
                 tipo: 'COMMERCE'
+            });
+        }
+
+        // Notificar si cambió el rol de acceso
+        if (id_rol && parseInt(id_rol) !== usuarioStatus.id_rol) {
+            await createNotification({
+                id_usuario: id,
+                titulo: 'Permisos Actualizados',
+                mensaje: `Tu nivel de acceso en la plataforma ha sido modificado por un Administrador.`,
+                tipo: 'SYSTEM'
             });
         }
 

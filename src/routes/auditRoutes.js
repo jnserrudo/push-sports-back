@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
+const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
+
+router.use(authMiddleware);
+router.use(roleMiddleware([1]));
 
 // Listar todos los registros de auditoría
 router.get('/', async (req, res) => {
