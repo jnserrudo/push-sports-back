@@ -48,9 +48,13 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              }
 
              const subtotal = parseFloat(precio_unitario) * cantidad;
-             const comision_porcentaje = parseFloat(inventario.comision_pactada_porcentaje) || 0;
-             const comision_monto = (subtotal * comision_porcentaje) / 100;
-             const neto = subtotal - comision_monto;
+             
+             // Nueva lógica: La sede central (Mili) cobra el PRECIO PUSH SPORT.
+             // La ganancia del comercio es la diferencia entre el precio de venta y el pushsport.
+             const pPushsport = parseFloat(inventario.producto.precio_pushsport) || 0;
+             const neto = pPushsport * cantidad; // Lo que Mili recibe
+             const comision_monto = subtotal - neto; // La ganancia de la sucursal
+             
              const costo_unitario_historico = inventario.producto.costo_compra;
 
              total_venta_cabecera += subtotal;
@@ -59,10 +63,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                  id_producto,
                  cantidad,
                  precio_unitario_cobrado: precio_unitario,
+                 precio_pushsport_historico: pPushsport,
                  costo_unitario_historico,
-                 subtotal,
-                 comision_monto_historico: comision_monto,
-                 neto_mili_historico: neto
+                 _neto: neto // guardamos el neto_mili para la transacción local debajo
              });
         }
 
@@ -80,7 +83,11 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
 
              // 3b. Insertar Detalles
              const detailsWithVentaId = detallesProcesados.map(d => ({
-                 ...d,
+                 id_producto: d.id_producto,
+                 cantidad: d.cantidad,
+                 precio_unitario_cobrado: d.precio_unitario_cobrado,
+                 precio_pushsport_historico: d.precio_pushsport_historico,
+                 costo_unitario_historico: d.costo_unitario_historico,
                  id_venta: nuevaVenta.id_venta
              }));
 
@@ -99,7 +106,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                      id_tipo_movimiento: 2,
                      cantidad_cambio: det.cantidad
                  }, tx);
-                 totalNeto += parseFloat(det.neto_mili_historico);
+                 totalNeto += parseFloat(det._neto);
              }
 
              // 3d. Acumular el saldo neto de la venta en el Comercio
@@ -128,6 +135,34 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
     } catch (error) {
         console.error('Error al registrar venta:', error);
         res.status(500).json({ error: error.message || 'Error interno al registrar la venta.' });
+    }
+});
+
+// Obtener una venta por ID (usado por el módulo de Devoluciones)
+router.get('/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const venta = await prisma.ventaCabecera.findUnique({
+            where: { id_venta: id },
+            include: {
+                comercio: true,
+                usuario: true,
+                detalles: {
+                    include: { producto: true }
+                }
+            }
+        });
+        if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+
+        // Roles 2 y 3 solo pueden ver ventas de su comercio
+        if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== venta.id_comercio) {
+            return res.status(403).json({ error: 'No tienes permiso para ver esta venta' });
+        }
+
+        res.json(venta);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error al obtener la venta' });
     }
 });
 

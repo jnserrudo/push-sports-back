@@ -26,7 +26,7 @@ const liquidationService = {
       
       for (const venta of ventasPendientes) {
           for (const detalle of venta.detalles) {
-               totalVentasNetas += parseFloat(detalle.neto_mili_historico);
+               totalVentasNetas += parseFloat(detalle.precio_pushsport_historico) * detalle.cantidad;
           }
       }
 

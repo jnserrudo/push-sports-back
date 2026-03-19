@@ -39,6 +39,7 @@ const discountRoutes = require('./src/routes/discountRoutes');
 const offerRoutes = require('./src/routes/offerRoutes');
 const comboRoutes = require('./src/routes/comboRoutes');
 const returnsRoutes = require('./src/routes/returnsRoutes');
+const tipoComercioRoutes = require('./src/routes/tipoComercioRoutes');
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -55,6 +56,7 @@ app.use('/api/descuentos', discountRoutes);
 app.use('/api/ofertas', offerRoutes);
 app.use('/api/combos', comboRoutes);
 app.use('/api/devoluciones', returnsRoutes);
+app.use('/api/tipos-comercio', tipoComercioRoutes);
 app.use('/api', authRoutes);
 
 // Configuración de Swagger

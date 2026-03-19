@@ -63,9 +63,12 @@ model Producto {
   id_marca              Int
   id_proveedor          String?   @db.Uuid
   precio_venta_sugerido Decimal   @db.Decimal(10, 2)
+  precio_pushsport      Decimal   @default(0) @db.Decimal(10, 2)
   costo_compra          Decimal   @db.Decimal(10, 2)
   imagen_url            String?   @db.Text
   stock_minimo          Int       @default(5)
+  stock_central         Int       @default(0)
+  atributos             Json?     @default("{}")
   activo                Boolean   @default(true)
 
   categoria             Categoria  @relation(fields: [id_categoria], references: [id_categoria])
@@ -212,11 +215,9 @@ model VentaDetalle {
   id_venta                 String   @db.Uuid
   id_producto              String   @db.Uuid
   cantidad                 Int
-  precio_unitario_cobrado  Decimal  @db.Decimal(10, 2)
-  costo_unitario_historico Decimal  @db.Decimal(10, 2)
-  subtotal                 Decimal  @db.Decimal(10, 2)
-  comision_monto_historico Decimal  @db.Decimal(10, 2)
-  neto_mili_historico      Decimal  @db.Decimal(10, 2)
+  precio_unitario_cobrado    Decimal  @db.Decimal(10, 2)
+  precio_pushsport_historico Decimal  @default(0) @db.Decimal(10, 2)
+  costo_unitario_historico   Decimal  @db.Decimal(10, 2)
 
   venta                    VentaCabecera @relation(fields: [id_venta], references: [id_venta])
   producto                 Producto      @relation(fields: [id_producto], references: [id_producto])

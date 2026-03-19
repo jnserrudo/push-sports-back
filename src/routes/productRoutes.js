@@ -42,8 +42,8 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const {
             nombre, descripcion,
             id_categoria, id_marca, id_proveedor,
-            precio_venta_sugerido, costo_compra,
-            imagen_url, stock_minimo
+            precio_venta_sugerido, precio_pushsport, costo_compra,
+            imagen_url, stock_minimo, stock_central
         } = req.body;
 
         if (!nombre || !id_categoria || !id_marca || !precio_venta_sugerido || !costo_compra) {
@@ -58,9 +58,11 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
                 id_marca: parseInt(id_marca),
                 id_proveedor: id_proveedor || null,
                 precio_venta_sugerido: parseFloat(precio_venta_sugerido),
+                precio_pushsport: precio_pushsport !== undefined ? parseFloat(precio_pushsport) : 0,
                 costo_compra: parseFloat(costo_compra),
                 imagen_url: imagen_url || null,
                 stock_minimo: stock_minimo ? parseInt(stock_minimo) : 5,
+                stock_central: stock_central !== undefined ? parseInt(stock_central) : 0,
             },
             include: { marca: true, categoria: true, proveedor: true }
         });
@@ -78,8 +80,8 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const {
             nombre, descripcion,
             id_categoria, id_marca, id_proveedor,
-            precio_venta_sugerido, costo_compra,
-            imagen_url, stock_minimo, activo
+            precio_venta_sugerido, precio_pushsport, costo_compra,
+            imagen_url, stock_minimo, stock_central, activo
         } = req.body;
 
         const data = {};
@@ -89,9 +91,11 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         if (id_marca !== undefined)              data.id_marca = parseInt(id_marca);
         if (id_proveedor !== undefined)          data.id_proveedor = id_proveedor || null;
         if (precio_venta_sugerido !== undefined) data.precio_venta_sugerido = parseFloat(precio_venta_sugerido);
+        if (precio_pushsport !== undefined)      data.precio_pushsport = parseFloat(precio_pushsport);
         if (costo_compra !== undefined)          data.costo_compra = parseFloat(costo_compra);
         if (imagen_url !== undefined)            data.imagen_url = imagen_url || null;
         if (stock_minimo !== undefined)          data.stock_minimo = parseInt(stock_minimo);
+        if (stock_central !== undefined)         data.stock_central = parseInt(stock_central);
         if (activo !== undefined)                data.activo = activo;
 
         const producto = await prisma.producto.update({

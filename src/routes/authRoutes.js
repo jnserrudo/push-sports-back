@@ -11,10 +11,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supers3cr3t';
 router.post('/register', async (req, res) => {
     try {
         const { nombre, apellido, username, email, password } = req.body;
+        
+        // Auto-generar username si el frontend no lo envió (basado en el email)
+        const finalUsername = username || email.split('@')[0];
 
         // Validar si ya existe
         const existingUser = await prisma.usuario.findFirst({
-            where: { OR: [{ email }, { username }] }
+            where: { OR: [{ email }, { username: finalUsername }] }
         });
         if (existingUser) {
             return res.status(400).json({ error: 'El usuario o email ya existe' });
@@ -27,7 +30,7 @@ router.post('/register', async (req, res) => {
             data: {
                 nombre,
                 apellido,
-                username,
+                username: finalUsername,
                 email,
                 password_hash,
                 id_rol: 4, // Siempre USUARIO por defecto
@@ -89,7 +92,16 @@ router.post('/login', async (req, res) => {
 
         const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
 
-        res.json({ token, user: payload });
+        // Incluir datos completos del usuario en la respuesta (sin la contraseña)
+        const userResponse = {
+            ...payload,
+            nombre: usuario.nombre,
+            apellido: usuario.apellido,
+            email: usuario.email,
+            username: usuario.username,
+        };
+
+        res.json({ token, user: userResponse });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error en el login' });

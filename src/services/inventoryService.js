@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { notifyAdmins } = require('./notificationService');
 
 const inventoryService = {
   /**
@@ -61,15 +62,17 @@ const inventoryService = {
       });
 
       // 5. Evaluar Notificaciones de Stock Mínimo
-      if (inventarioActualizado.cantidad_actual < inventarioActualizado.stock_minimo_alerta) {
-        await tx.notificacion.create({
-          data: {
-            id_usuario: id_usuario, // Idealmente enviar al admin del comercio
-            titulo: 'Alerta de Stock Mínimo',
-            mensaje: `El producto ID ${id_producto} en tu comercio ha caído por debajo del stock mínimo (${inventarioActualizado.stock_minimo_alerta}). Stock actual: ${inventarioActualizado.cantidad_actual}.`,
-            tipo: 'STOCK_ALERT',
-          },
-        });
+      if (inventarioActualizado.cantidad_actual <= inventarioActualizado.stock_minimo_alerta) {
+        // En lugar de notificar al usuario que hace la venta (ej. Vendedor), notificar a los Administradores
+        try {
+             await notifyAdmins({
+                 titulo: 'ALERTA: Stock Mínimo',
+                 mensaje: `El producto ID ${id_producto} en el comercio ID ${id_comercio} ha alcanzado o caído por debajo del stock mínimo (${inventarioActualizado.stock_minimo_alerta}). Stock actual: ${inventarioActualizado.cantidad_actual}.`,
+                 tipo: 'STOCK_ALERT'
+             });
+        } catch (error) {
+             console.error('Error al notificar stock minimo a admins:', error);
+        }
       }
 
       return { inventario: inventarioActualizado, movimiento };
