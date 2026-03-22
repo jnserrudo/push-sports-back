@@ -27,6 +27,7 @@ model Usuario {
   movimientos_autorizados MovimientoStock[]
   auditorias_rastreadas AuditoriaSistema[]
   devoluciones         Devolucion[]
+  password_reset_tokens PasswordResetToken[]
 
   @@map("USUARIOS")
 }
@@ -308,4 +309,17 @@ model Devolucion {
   comercio Comercio      @relation(fields: [id_comercio], references: [id_comercio])
 
   @@map("DEVOLUCIONES")
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  id_usuario String   @db.Uuid
+  token      String   @unique
+  expira_en  DateTime
+  usado      Boolean  @default(false)
+  creado_en  DateTime @default(now())
+  
+  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
+  
+  @@map("PASSWORD_RESET_TOKENS")
 }

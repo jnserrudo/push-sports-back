@@ -8,8 +8,13 @@ const authMiddleware = (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
 
+  if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET no está definido en las variables de entorno.');
+    return res.status(500).json({ message: 'Error de configuración del servidor.' });
+  }
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supers3cr3t');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     return next();
   } catch (error) {

@@ -8,7 +8,13 @@ const { notifyCommerceManagers } = require('../services/notificationService');
 // Listar todos los movimientos de stock
 router.get('/', authMiddleware, async (req, res) => {
     try {
+        // Roles 2 y 3 solo pueden ver movimientos de su propio comercio
+        const filter = (req.user.id_rol === 2 || req.user.id_rol === 3)
+            ? { id_comercio: req.user.id_comercio_asignado }
+            : {};
+
         const movimientos = await prisma.movimientoStock.findMany({
+            where: filter,
             include: {
                 producto: true,
                 comercio: true,
@@ -93,6 +99,31 @@ router.post('/', authMiddleware, async (req, res) => {
             mensaje: `Movimiento de ${cantidad_cambio} unidades registrado para "${result.producto.nombre}" (${result.tipo_movimiento.nombre_movimiento}).`,
             tipo: 'COMMERCE'
         });
+
+        // Si es un ingreso (tipo 1), validar y descontar del stock_central del producto
+        if (parseInt(id_tipo_movimiento) === 1) {
+            const producto = await prisma.producto.findUnique({
+                where: { id_producto },
+                select: { stock_central: true, nombre: true }
+            });
+
+            const cantidadEnvio = Math.abs(parseInt(cantidad_cambio));
+            
+            if (!producto || producto.stock_central < cantidadEnvio) {
+                return res.status(400).json({ 
+                    error: `Stock central insuficiente para "${producto?.nombre || 'producto'}". Disponible: ${producto?.stock_central || 0}, Requerido: ${cantidadEnvio}` 
+                });
+            }
+
+            await prisma.producto.update({
+                where: { id_producto },
+                data: {
+                    stock_central: {
+                        decrement: cantidadEnvio
+                    }
+                }
+            });
+        }
 
         res.status(201).json(result);
     } catch (error) {

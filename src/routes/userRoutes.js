@@ -136,4 +136,39 @@ router.delete('/:id', authMiddleware, roleMiddleware([1]), async (req, res) => {
     }
 });
 
+// Cambiar contraseña del usuario autenticado
+router.put('/cambiar-password', authMiddleware, async (req, res) => {
+    try {
+        const { password_actual, password_nueva } = req.body;
+        const id_usuario = req.user.id_usuario;
+
+        if (!password_actual || !password_nueva) {
+            return res.status(400).json({ error: 'Se requieren la contraseña actual y la nueva.' });
+        }
+
+        if (password_nueva.length < 6) {
+            return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+        }
+
+        const usuario = await prisma.usuario.findUnique({ where: { id_usuario } });
+        if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+        const isMatch = await bcrypt.compare(password_actual, usuario.password_hash);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'La contraseña actual es incorrecta.' });
+        }
+
+        const nuevoHash = await bcrypt.hash(password_nueva, 10);
+        await prisma.usuario.update({
+            where: { id_usuario },
+            data: { password_hash: nuevoHash }
+        });
+
+        res.json({ message: 'Contraseña actualizada correctamente.' });
+    } catch (error) {
+        console.error('Error cambiando contraseña:', error);
+        res.status(500).json({ error: 'Error interno al cambiar contraseña.' });
+    }
+});
+
 module.exports = router;

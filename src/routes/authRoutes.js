@@ -3,9 +3,14 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { notifyAdmins } = require('../services/notificationService');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supers3cr3t';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET no está definido en las variables de entorno.');
+    process.exit(1);
+}
 
 // REGISTER PUBLIC
 router.post('/register', async (req, res) => {
@@ -105,6 +110,92 @@ router.post('/login', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error en el login' });
+    }
+});
+
+// FORGOT PASSWORD - Solicitar reset de contraseña
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ error: 'Email requerido' });
+        }
+
+        const usuario = await prisma.usuario.findFirst({
+            where: { email, activo: true }
+        });
+        
+        // Por seguridad, siempre responder lo mismo exista o no el email
+        if (!usuario) {
+            return res.json({ message: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña' });
+        }
+        
+        // Generar token único
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiraEn = new Date(Date.now() + 3600000); // 1 hora
+        
+        await prisma.passwordResetToken.create({
+            data: {
+                id_usuario: usuario.id_usuario,
+                token,
+                expira_en: expiraEn
+            }
+        });
+        
+        // TODO: Enviar email con link de reset
+        // const resetLink = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+        // await sendEmail(email, 'Recuperación de contraseña', resetLink);
+        
+        console.log(`Token de reset generado para ${email}: ${token}`);
+        console.log(`Link de reset: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${token}`);
+        
+        res.json({ message: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña' });
+    } catch (error) {
+        console.error('Error en forgot-password:', error);
+        res.status(500).json({ error: 'Error al procesar solicitud' });
+    }
+});
+
+// RESET PASSWORD - Resetear contraseña con token
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { token, nueva_password } = req.body;
+        
+        if (!token || !nueva_password) {
+            return res.status(400).json({ error: 'Token y contraseña requeridos' });
+        }
+
+        if (nueva_password.length < 6) {
+            return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+        }
+        
+        const resetToken = await prisma.passwordResetToken.findUnique({
+            where: { token },
+            include: { usuario: true }
+        });
+        
+        if (!resetToken || resetToken.usado || new Date() > resetToken.expira_en) {
+            return res.status(400).json({ error: 'Token inválido o expirado' });
+        }
+        
+        const nuevoHash = await bcrypt.hash(nueva_password, 10);
+        
+        await prisma.$transaction([
+            prisma.usuario.update({
+                where: { id_usuario: resetToken.id_usuario },
+                data: { password_hash: nuevoHash }
+            }),
+            prisma.passwordResetToken.update({
+                where: { token },
+                data: { usado: true }
+            })
+        ]);
+        
+        res.json({ message: 'Contraseña actualizada correctamente' });
+    } catch (error) {
+        console.error('Error en reset-password:', error);
+        res.status(500).json({ error: 'Error al resetear contraseña' });
     }
 });
 

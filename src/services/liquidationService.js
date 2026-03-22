@@ -57,6 +57,12 @@ const liquidationService = {
         },
       });
 
+      // 5. Resetear saldo_acumulado_mili del comercio a 0 dentro de la misma transacción
+      await tx.comercio.update({
+        where: { id_comercio },
+        data: { saldo_acumulado_mili: 0 }
+      });
+
       return liquidacion;
     });
   },
