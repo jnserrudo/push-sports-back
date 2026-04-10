@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Middlewares
+// Middlewares básicos
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
@@ -15,12 +15,14 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'API running' });
 });
 
+// Importar Prisma ya extendido con auditoría
 const prisma = require('./src/config/prisma');
-const auditExtension = require('./src/services/auditService');
+const { auditMiddleware } = require('./src/services/auditService');
 
-// Extender Prisma con el servicio de auditoría
-const extendedPrisma = prisma.$extends(auditExtension);
-global.prisma = extendedPrisma; // Sobrescribir para que las rutas usen el extendido
+// Middleware de auditoría - captura el usuario después de la autenticación
+// Las rutas individuales ya tienen authMiddleware, así que solo agregamos auditMiddleware
+// que se ejecutará después y capturará req.user
+app.use('/api', auditMiddleware);
 
 // Routes
 const salesRoutes = require('./src/routes/salesRoutes');
@@ -40,6 +42,7 @@ const offerRoutes = require('./src/routes/offerRoutes');
 const comboRoutes = require('./src/routes/comboRoutes');
 const returnsRoutes = require('./src/routes/returnsRoutes');
 const tipoComercioRoutes = require('./src/routes/tipoComercioRoutes');
+const productVariantRoutes = require('./src/routes/productVariantRoutes');
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -57,6 +60,7 @@ app.use('/api/ofertas', offerRoutes);
 app.use('/api/combos', comboRoutes);
 app.use('/api/devoluciones', returnsRoutes);
 app.use('/api/tipos-comercio', tipoComercioRoutes);
+app.use('/api/variantes', productVariantRoutes);
 app.use('/api', authRoutes);
 
 // Configuración de Swagger

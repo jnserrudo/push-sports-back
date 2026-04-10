@@ -70,6 +70,7 @@ model Producto {
   stock_minimo          Int       @default(5)
   stock_central         Int       @default(0)
   atributos             Json?     @default("{}")
+  usa_variantes         Boolean   @default(false)
   activo                Boolean   @default(true)
 
   categoria             Categoria  @relation(fields: [id_categoria], references: [id_categoria])
@@ -77,6 +78,7 @@ model Producto {
   proveedor             Proveedor? @relation(fields: [id_proveedor], references: [id_proveedor])
 
   inventarios           InventarioComercio[]
+  variantes             ProductoVariante[]
   ventas_detalle        VentaDetalle[]
   movimientos           MovimientoStock[]
   devoluciones          Devolucion[]
@@ -156,9 +158,12 @@ model InventarioComercio {
   cantidad_actual             Int      @default(0)
   stock_minimo_alerta         Int      @default(5)
   comision_pactada_porcentaje Decimal  @db.Decimal(5, 2)
+  requiere_migracion          Boolean  @default(false)
+  usa_desglose_variantes      Boolean  @default(false)
 
   comercio                    Comercio @relation(fields: [id_comercio], references: [id_comercio])
   producto                    Producto @relation(fields: [id_producto], references: [id_producto])
+  variantes                   InventarioComercioVariante[]
 
   @@unique([id_comercio, id_producto])
   @@map("INVENTARIO_COMERCIO")
@@ -183,12 +188,14 @@ model MovimientoStock {
   cantidad_cambio    Int
   saldo_anterior     Int
   saldo_posterior    Int
+  tiene_desglose_variantes Boolean @default(false)
   fecha_hora         DateTime @default(now())
 
   producto           Producto @relation(fields: [id_producto], references: [id_producto])
   comercio           Comercio @relation(fields: [id_comercio], references: [id_comercio])
   usuario            Usuario  @relation(fields: [id_usuario], references: [id_usuario])
   tipo_movimiento    TipoMovimiento @relation(fields: [id_tipo_movimiento], references: [id_tipo_movimiento])
+  variantes          MovimientoStockVariante[]
 
   @@map("MOVIMIENTOS_STOCK")
 }
@@ -219,9 +226,11 @@ model VentaDetalle {
   precio_unitario_cobrado    Decimal  @db.Decimal(10, 2)
   precio_pushsport_historico Decimal  @default(0) @db.Decimal(10, 2)
   costo_unitario_historico   Decimal  @db.Decimal(10, 2)
+  tiene_variantes          Boolean   @default(false)
 
   venta                    VentaCabecera @relation(fields: [id_venta], references: [id_venta])
   producto                 Producto      @relation(fields: [id_producto], references: [id_producto])
+  variantes                VentaDetalleVariante[]
 
   @@map("VENTAS_DETALLE")
 }
@@ -322,4 +331,69 @@ model PasswordResetToken {
   usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
   
   @@map("PASSWORD_RESET_TOKENS")
+}
+
+// ═══════════════════════════════════════════════════════════
+// SISTEMA DE VARIANTES DE PRODUCTOS
+// Permite control de stock por combinaciones de atributos
+// ═══════════════════════════════════════════════════════════
+
+model ProductoVariante {
+  id_variante          String    @id @default(uuid()) @db.Uuid
+  id_producto          String    @db.Uuid
+  sku_variante         String?   @unique
+  atributos_valores    Json      // {"SABOR": "VAINILLA", "TAMAÑO": "1KG"}
+  stock_central        Int       @default(0)
+  precio_variante      Decimal   @db.Decimal(10, 2) @default(0)  // Precio específico (0 = usar precio del producto)
+  activo               Boolean   @default(true)
+  fecha_creacion       DateTime  @default(now())
+  fecha_actualizacion  DateTime? @updatedAt  // Opcional para permitir migración con datos existentes
+
+  producto             Producto  @relation(fields: [id_producto], references: [id_producto], onDelete: Cascade)
+  inventarios          InventarioComercioVariante[]
+  movimientos          MovimientoStockVariante[]
+  ventas_detalle       VentaDetalleVariante[]
+
+  @@map("PRODUCTOS_VARIANTES")
+}
+
+model InventarioComercioVariante {
+  id_inventario_var    String   @id @default(uuid()) @db.Uuid
+  id_inventario        String   @db.Uuid
+  id_variante          String   @db.Uuid
+  cantidad_actual      Int      @default(0)
+  stock_minimo_alerta  Int      @default(5)
+  
+  inventario_padre     InventarioComercio @relation(fields: [id_inventario], references: [id_inventario])
+  variante             ProductoVariante @relation(fields: [id_variante], references: [id_variante])
+
+  @@unique([id_inventario, id_variante])
+  @@map("INVENTARIO_COMERCIO_VARIANTES")
+}
+
+model MovimientoStockVariante {
+  id_movimiento_var    String   @id @default(uuid()) @db.Uuid
+  id_movimiento        String   @db.Uuid
+  id_variante          String   @db.Uuid
+  cantidad_cambio      Int
+  saldo_anterior       Int
+  saldo_posterior      Int
+
+  movimiento_padre     MovimientoStock @relation(fields: [id_movimiento], references: [id_movimiento])
+  variante             ProductoVariante @relation(fields: [id_variante], references: [id_variante])
+
+  @@map("MOVIMIENTOS_STOCK_VARIANTES")
+}
+
+model VentaDetalleVariante {
+  id_detalle_var       String   @id @default(uuid()) @db.Uuid
+  id_detalle           String   @db.Uuid
+  id_variante          String   @db.Uuid
+  cantidad             Int
+  precio_unitario      Decimal  @db.Decimal(10, 2)
+
+  detalle_padre        VentaDetalle @relation(fields: [id_detalle], references: [id_detalle])
+  variante             ProductoVariante @relation(fields: [id_variante], references: [id_variante])
+
+  @@map("VENTAS_DETALLE_VARIANTES")
 }

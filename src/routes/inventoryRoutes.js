@@ -17,7 +17,32 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
 
         const inventario = await prisma.inventarioComercio.findMany({
             where: { id_comercio, producto: { activo: true } },
-            include: { producto: true }
+            include: { 
+                producto: {
+                    include: {
+                        variantes: {
+                            where: { activo: true },
+                            select: {
+                                id_variante: true,
+                                sku_variante: true,
+                                atributos_valores: true
+                            }
+                        }
+                    }
+                },
+                variantes: {
+                    where: { cantidad_actual: { gt: 0 } },
+                    include: {
+                        variante: {
+                            select: {
+                                id_variante: true,
+                                sku_variante: true,
+                                atributos_valores: true
+                            }
+                        }
+                    }
+                }
+            }
         });
         res.json(inventario);
     } catch (error) {
@@ -101,6 +126,188 @@ router.delete('/:id_inventario', authMiddleware, roleMiddleware([1]), async (req
         res.json({ message: 'Producto desvinculado del comercio correctamente' });
     } catch (error) {
         res.status(500).json({ error: 'Error al desvincular producto' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ENDPOINTS PARA VARIANTES
+// ═══════════════════════════════════════════════════════════
+
+// Obtener stock de una variante específica en un comercio
+router.get('/:id_comercio/variantes/:id_variante', authMiddleware, async (req, res) => {
+    try {
+        const { id_comercio, id_variante } = req.params;
+
+        // Filtro de seguridad por rol
+        if ((req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
+            return res.status(403).json({ error: 'No tienes permiso para ver este inventario' });
+        }
+
+        // Buscar o crear el registro de inventario para la variante
+        let inventarioVariante = await prisma.inventarioComercioVariante.findFirst({
+            where: { 
+                variante: { id_variante },
+                inventario_padre: { id_comercio }
+            },
+            include: {
+                variante: {
+                    select: {
+                        id_variante: true,
+                        sku_variante: true,
+                        atributos_valores: true,
+                        producto: {
+                            select: {
+                                id_producto: true,
+                                nombre: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Si no existe, retornar stock 0 pero no crear aún
+        if (!inventarioVariante) {
+            const variante = await prisma.productoVariante.findUnique({
+                where: { id_variante },
+                include: {
+                    producto: {
+                        select: { id_producto: true, nombre: true }
+                    }
+                }
+            });
+
+            if (!variante) {
+                return res.status(404).json({ error: 'Variante no encontrada' });
+            }
+
+            return res.json({
+                variante,
+                cantidad_actual: 0,
+                stock_minimo_alerta: 5,
+                existe: false
+            });
+        }
+
+        res.json(inventarioVariante);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al obtener stock de variante' });
+    }
+});
+
+// Actualizar stock de una variante específica (o crear si no existe)
+router.put('/:id_comercio/variantes/:id_variante', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
+    try {
+        const { id_comercio, id_variante } = req.params;
+        const { cantidad_actual, stock_minimo_alerta } = req.body;
+
+        // Verificar pertenencia si es Supervisor
+        if (req.user.id_rol === 2 && req.user.id_comercio_asignado !== id_comercio) {
+            return res.status(403).json({ error: 'Solo puedes editar inventario de tu propio comercio' });
+        }
+
+        // Buscar el inventario padre
+        let inventarioPadre = await prisma.inventarioComercio.findUnique({
+            where: { 
+                id_comercio_id_producto: {
+                    id_comercio,
+                    id_producto: (await prisma.productoVariante.findUnique({ 
+                        where: { id_variante },
+                        select: { id_producto: true }
+                    }))?.id_producto
+                }
+            }
+        });
+
+        // Si no existe inventario padre, crearlo
+        if (!inventarioPadre) {
+            const variante = await prisma.productoVariante.findUnique({
+                where: { id_variante },
+                select: { id_producto: true }
+            });
+
+            if (!variante) {
+                return res.status(404).json({ error: 'Variante no encontrada' });
+            }
+
+            inventarioPadre = await prisma.inventarioComercio.create({
+                data: {
+                    id_comercio,
+                    id_producto: variante.id_producto,
+                    cantidad_actual: 0,
+                    stock_minimo_alerta: stock_minimo_alerta ? parseInt(stock_minimo_alerta) : 5,
+                    comision_pactada_porcentaje: 0
+                }
+            });
+        }
+
+        // Buscar o crear el inventario de variante
+        let inventarioVariante = await prisma.inventarioComercioVariante.findUnique({
+            where: {
+                id_inventario_id_variante: {
+                    id_inventario: inventarioPadre.id_inventario,
+                    id_variante
+                }
+            }
+        });
+
+        const data = {};
+        if (cantidad_actual !== undefined) data.cantidad_actual = parseInt(cantidad_actual);
+        if (stock_minimo_alerta !== undefined) data.stock_minimo_alerta = parseInt(stock_minimo_alerta);
+
+        if (inventarioVariante) {
+            // Actualizar existente
+            inventarioVariante = await prisma.inventarioComercioVariante.update({
+                where: { id_inventario_var: inventarioVariante.id_inventario_var },
+                data,
+                include: {
+                    variante: {
+                        select: {
+                            id_variante: true,
+                            sku_variante: true,
+                            atributos_valores: true
+                        }
+                    }
+                }
+            });
+        } else {
+            // Crear nuevo
+            inventarioVariante = await prisma.inventarioComercioVariante.create({
+                data: {
+                    id_inventario: inventarioPadre.id_inventario,
+                    id_variante,
+                    cantidad_actual: cantidad_actual ? parseInt(cantidad_actual) : 0,
+                    stock_minimo_alerta: stock_minimo_alerta ? parseInt(stock_minimo_alerta) : 5
+                },
+                include: {
+                    variante: {
+                        select: {
+                            id_variante: true,
+                            sku_variante: true,
+                            atributos_valores: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Alerta de stock bajo
+        if (cantidad_actual !== undefined && cantidad_actual <= inventarioVariante.stock_minimo_alerta) {
+            const atributos = inventarioVariante.variante?.atributos_valores || {};
+            const nombreVariante = Object.values(atributos).join(' / ');
+            
+            await notifyCommerceManagers(id_comercio, {
+                titulo: 'Alerta: Stock Bajo de Variante',
+                mensaje: `La variante "${nombreVariante}" ha llegado al límite mínimo (${cantidad_actual} unidades) en tu sede.`,
+                tipo: 'COMMERCE'
+            });
+        }
+
+        res.json(inventarioVariante);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al actualizar stock de variante' });
     }
 });
 

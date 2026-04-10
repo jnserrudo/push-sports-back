@@ -28,44 +28,88 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
         const detallesProcesados = [];
 
         for (const item of detalles) {
-             const { id_producto, cantidad, precio_unitario } = item;
+             const { id_producto, id_variante, cantidad, precio_unitario } = item;
 
              if (!id_producto || cantidad <= 0 || !precio_unitario) {
                   return res.status(400).json({ error: 'Detalle de formato inválido.' });
              }
 
-             const inventario = await prisma.inventarioComercio.findUnique({
-                  where: { id_comercio_id_producto: { id_comercio, id_producto } },
-                  include: { producto: true }
+             const producto = await prisma.producto.findUnique({
+                 where: { id_producto },
+                 select: { 
+                     id_producto: true, 
+                     nombre: true, 
+                     activo: true,
+                     usa_variantes: true,
+                     precio_pushsport: true,
+                     costo_compra: true
+                 }
              });
 
-             if (!inventario || !inventario.producto.activo) {
-                  return res.status(404).json({ error: `Producto ${id_producto} no disponible en este comercio.` });
+             if (!producto || !producto.activo) {
+                  return res.status(404).json({ error: `Producto ${id_producto} no disponible.` });
              }
 
-             if (inventario.cantidad_actual < cantidad) {
-                 return res.status(400).json({ error: `Stock insuficiente para el producto ${inventario.producto.nombre}.` });
+             // Si el producto usa variantes, validar stock de la variante
+             if (producto.usa_variantes) {
+                 if (!id_variante) {
+                     return res.status(400).json({ 
+                         error: `El producto "${producto.nombre}" requiere especificar una variante.` 
+                     });
+                 }
+
+                 const inventarioVariante = await prisma.inventarioComercioVariante.findFirst({
+                     where: { 
+                         variante: { id_variante },
+                         inventario_padre: { id_comercio }
+                     },
+                     include: { variante: true }
+                 });
+
+                 const stockDisponible = inventarioVariante?.cantidad_actual || 0;
+                 
+                 if (stockDisponible < cantidad) {
+                     const atributos = inventarioVariante?.variante?.atributos_valores || {};
+                     const nombreVariante = Object.values(atributos).join(' / ') || 'Variante';
+                     return res.status(400).json({ 
+                         error: `Stock insuficiente para ${producto.nombre} - ${nombreVariante}. Disponible: ${stockDisponible}` 
+                     });
+                 }
+             } else {
+                 // Producto sin variantes - comportamiento original
+                 const inventario = await prisma.inventarioComercio.findUnique({
+                      where: { id_comercio_id_producto: { id_comercio, id_producto } }
+                 });
+
+                 if (!inventario || inventario.cantidad_actual < cantidad) {
+                     const stockDisp = inventario?.cantidad_actual || 0;
+                     return res.status(400).json({ 
+                         error: `Stock insuficiente para ${producto.nombre}. Disponible: ${stockDisp}` 
+                     });
+                 }
              }
 
              const subtotal = parseFloat(precio_unitario) * cantidad;
              
              // Nueva lógica: La sede central (Mili) cobra el PRECIO PUSH SPORT.
              // La ganancia del comercio es la diferencia entre el precio de venta y el pushsport.
-             const pPushsport = parseFloat(inventario.producto.precio_pushsport) || 0;
+             const pPushsport = parseFloat(producto.precio_pushsport) || 0;
              const neto = pPushsport * cantidad; // Lo que Mili recibe
              const comision_monto = subtotal - neto; // La ganancia de la sucursal
              
-             const costo_unitario_historico = inventario.producto.costo_compra;
+             const costo_unitario_historico = producto.costo_compra;
 
              total_venta_cabecera += subtotal;
 
              detallesProcesados.push({
                  id_producto,
+                 id_variante, // puede ser null
                  cantidad,
                  precio_unitario_cobrado: precio_unitario,
                  precio_pushsport_historico: pPushsport,
                  costo_unitario_historico,
-                 _neto: neto // guardamos el neto_mili para la transacción local debajo
+                 _neto: neto,
+                 usa_variantes: producto.usa_variantes
              });
         }
 
@@ -88,24 +132,92 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                  precio_unitario_cobrado: d.precio_unitario_cobrado,
                  precio_pushsport_historico: d.precio_pushsport_historico,
                  costo_unitario_historico: d.costo_unitario_historico,
-                 id_venta: nuevaVenta.id_venta
+                 id_venta: nuevaVenta.id_venta,
+                 tiene_variantes: d.usa_variantes
              }));
 
              await tx.ventaDetalle.createMany({
                  data: detailsWithVentaId
              });
 
+             // Si hay variantes, crear los registros de VentaDetalleVariante
+             const detallesConVariantes = detallesProcesados.filter(d => d.usa_variantes && d.id_variante);
+             if (detallesConVariantes.length > 0) {
+                 // Obtener los IDs de los detalles recién creados
+                 const detallesCreados = await tx.ventaDetalle.findMany({
+                     where: { id_venta: nuevaVenta.id_venta },
+                     select: { id_detalle: true, id_producto: true }
+                 });
+
+                 const variantesData = detallesConVariantes.map(d => {
+                     const detallePadre = detallesCreados.find(dc => dc.id_producto === d.id_producto);
+                     return {
+                         id_detalle: detallePadre.id_detalle,
+                         id_variante: d.id_variante,
+                         cantidad: d.cantidad,
+                         precio_unitario: d.precio_unitario_cobrado
+                     };
+                 });
+
+                 await tx.ventaDetalleVariante.createMany({
+                     data: variantesData
+                 });
+             }
+
              // 3c. Actualizar Stock y registrar Movimientos (Kardex)
              // tipo_movimiento: 2 = "Venta" (factor_multiplicador: -1)
              let totalNeto = 0;
              for (const det of detallesProcesados) {
-                 await inventoryService.updateStock({
-                     id_comercio,
-                     id_producto: det.id_producto,
-                     id_usuario,
-                     id_tipo_movimiento: 2,
-                     cantidad_cambio: det.cantidad
-                 }, tx);
+                 if (det.usa_variantes && det.id_variante) {
+                     // Actualizar stock de variante
+                     const inventarioVariante = await tx.inventarioComercioVariante.findFirst({
+                         where: { 
+                             variante: { id_variante: det.id_variante },
+                             inventario_padre: { id_comercio }
+                         }
+                     });
+
+                     if (inventarioVariante) {
+                         await tx.inventarioComercioVariante.update({
+                             where: { id_inventario_var: inventarioVariante.id_inventario_var },
+                             data: {
+                                 cantidad_actual: { decrement: det.cantidad }
+                             }
+                         });
+
+                         // Registrar movimiento de variante
+                         await tx.movimientoStockVariante.create({
+                             data: {
+                                 id_movimiento: (await tx.movimientoStock.create({
+                                     data: {
+                                         id_producto: det.id_producto,
+                                         id_comercio,
+                                         id_usuario,
+                                         id_tipo_movimiento: 2,
+                                         cantidad_cambio: -det.cantidad,
+                                         saldo_anterior: inventarioVariante.cantidad_actual,
+                                         saldo_posterior: inventarioVariante.cantidad_actual - det.cantidad,
+                                         tiene_desglose_variantes: true
+                                     },
+                                     select: { id_movimiento: true }
+                                 })).id_movimiento,
+                                 id_variante: det.id_variante,
+                                 cantidad_cambio: -det.cantidad,
+                                 saldo_anterior: inventarioVariante.cantidad_actual,
+                                 saldo_posterior: inventarioVariante.cantidad_actual - det.cantidad
+                             }
+                         });
+                     }
+                 } else {
+                     // Producto sin variantes - comportamiento original
+                     await inventoryService.updateStock({
+                         id_comercio,
+                         id_producto: det.id_producto,
+                         id_usuario,
+                         id_tipo_movimiento: 2,
+                         cantidad_cambio: det.cantidad
+                     }, tx);
+                 }
                  totalNeto += parseFloat(det._neto);
              }
 
@@ -148,7 +260,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
                 comercio: true,
                 usuario: true,
                 detalles: {
-                    include: { producto: true }
+                    include: { 
+                        producto: true,
+                        variantes: {
+                            include: {
+                                variante: {
+                                    select: {
+                                        id_variante: true,
+                                        sku_variante: true,
+                                        atributos_valores: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -178,7 +303,20 @@ router.get('/', authMiddleware, async (req, res) => {
                  comercio: true,
                  usuario: true,
                  detalles: {
-                      include: { producto: true }
+                      include: { 
+                          producto: true,
+                          variantes: {
+                              include: {
+                                  variante: {
+                                      select: {
+                                          id_variante: true,
+                                          sku_variante: true,
+                                          atributos_valores: true
+                                      }
+                                  }
+                              }
+                          }
+                      }
                  }
             },
             orderBy: { fecha_hora: 'desc' }

@@ -1,65 +1,119 @@
 const { Prisma } = require('@prisma/client');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Crear almacenamiento asíncrono para el contexto de la solicitud
+const auditContext = new AsyncLocalStorage();
 
 // Las entidades que queremos auditar
-const AUDITABLE_MODELS = ['Producto', 'Comercio', 'Usuario', 'Categoria', 'Proveedor', 'Marca', 'TipoComercio', 'Descuento', 'Oferta', 'Combo'];
+const AUDITABLE_MODELS = [
+    'Producto', 'ProductoVariante', 'Comercio', 'Usuario', 
+    'Categoria', 'Proveedor', 'Marca', 'TipoComercio', 
+    'Descuento', 'Oferta', 'Combo', 
+    'InventarioComercio', 'InventarioComercioVariante',
+    'MovimientoStock', 'MovimientoStockVariante',
+    'VentaCabecera', 'VentaDetalle', 'VentaDetalleVariante',
+    'Devolucion', 'Liquidacion'
+];
+
+// Función para establecer el contexto de auditoría
+const setAuditUser = (userId) => {
+    const store = auditContext.getStore();
+    if (store) {
+        store.userId = userId;
+    }
+};
+
+// Middleware para inicializar el contexto de auditoría
+const auditMiddleware = (req, res, next) => {
+    const store = { userId: req.user?.id_usuario || null };
+    auditContext.run(store, () => {
+        next();
+    });
+};
 
 const auditExtension = Prisma.defineExtension((client) => {
-  return client.$extends({
-    query: {
-      $allModels: {
-        async $allOperations({ model, operation, args, query }) {
-          
-          const monitoredOps = ['create', 'update', 'delete'];
-          
-          if (AUDITABLE_MODELS.includes(model) && monitoredOps.includes(operation)) {
-             
-             // NOTA: Para obtener los valores anteriores requerimos de una busqueda antes de la mutacion.
-             // Para un prototipo lo simplificaremos haciendo el query original y luego una insercion asincrona en auditoria.
-             
-             // Ejecutamos la operacion solicitada
-             const result = await query(args);
+    return client.$extends({
+        query: {
+            $allModels: {
+                async $allOperations({ model, operation, args, query }) {
+                    
+                    const monitoredOps = ['create', 'update', 'delete'];
+                    
+                    if (AUDITABLE_MODELS.includes(model) && monitoredOps.includes(operation)) {
+                        
+                        // Capturar valor anterior para updates y deletes
+                        let valorAnterior = null;
+                        
+                        if ((operation === 'update' || operation === 'delete') && args.where) {
+                            try {
+                                const registroPrevio = await client[model].findUnique({ 
+                                    where: args.where 
+                                });
+                                if (registroPrevio) {
+                                    valorAnterior = JSON.stringify(registroPrevio);
+                                }
+                            } catch (e) {
+                                console.warn(`No se pudo capturar valor anterior para ${model}:`, e.message);
+                            }
+                        }
+                        
+                        // Ejecutamos la operacion solicitada
+                        const result = await query(args);
 
-             // En un contexto real, deberiamos extraer el id_usuario del AsyncLocalStorage.
-             // Para el prototipo, buscaremos el primer usuario ADMIN o usaremos un placeholder.
-             let currentUserId = "00000000-0000-0000-0000-000000000000"; // Placeholder UUID
-             
-             try {
-                 const firstUser = await client.usuario.findFirst({ where: { activo: true } });
-                 if (firstUser) currentUserId = firstUser.id_usuario;
-             } catch (e) {
-                 // Si falla (ej: no hay tablas aun), ignoramos
-             }
+                        // Obtener el ID del usuario del contexto
+                        const store = auditContext.getStore();
+                        let currentUserId = store?.userId || "00000000-0000-0000-0000-000000000000";
+                        
+                        // Si no hay usuario en contexto, intentar obtener el primer usuario activo
+                        if (!currentUserId || currentUserId === "00000000-0000-0000-0000-000000000000") {
+                            try {
+                                const firstUser = await client.usuario.findFirst({ 
+                                    where: { activo: true },
+                                    select: { id_usuario: true }
+                                });
+                                if (firstUser) currentUserId = firstUser.id_usuario;
+                            } catch (e) {
+                                // Ignorar error
+                            }
+                        }
 
-             const auditoriaData = {
-                 id_usuario: currentUserId,
-                 entidad_afectada: model,
-                 accion: operation.toUpperCase(),
-                 valor_nuevo: operation !== 'delete' ? JSON.stringify(result) : null,
-                 valor_anterior: operation === 'delete' ? JSON.stringify(result) : null, 
-             };
+                        // Preparar datos de auditoría
+                        const auditoriaData = {
+                            id_usuario: currentUserId,
+                            entidad_afectada: model,
+                            accion: operation.toUpperCase(),
+                            valor_nuevo: operation !== 'delete' ? JSON.stringify(result).substring(0, 10000) : null,
+                            valor_anterior: valorAnterior ? valorAnterior.substring(0, 10000) : null,
+                        };
 
-             // Registro asincrono
-             client.auditoriaSistema.create({ data: auditoriaData }).catch(e => console.error("Error auditing", e));
+                        // Registro asíncrono (no bloqueante)
+                        client.auditoriaSistema.create({ 
+                            data: auditoriaData 
+                        }).catch(e => console.error("Error auditing:", e.message));
 
-             // Si es una eliminación crítica, notificar a los admins
-             if (operation === 'delete' && ['Producto', 'Comercio', 'Usuario'].includes(model)) {
-                 const { notifyAdmins } = require('./notificationService');
-                 notifyAdmins({
-                     titulo: 'ALERTA: Eliminación Crítica',
-                     mensaje: `Se ha eliminado un registro de la entidad "${model}". Operador ID: ${currentUserId}`,
-                     tipo: 'SYSTEM'
-                 }).catch(() => {});
-             }
+                        // Notificar eliminaciones críticas
+                        if (operation === 'delete' && 
+                            ['Producto', 'Comercio', 'Usuario', 'ProductoVariante', 'VentaCabecera'].includes(model)) {
+                            const { notifyAdmins } = require('./notificationService');
+                            const esVariante = model === 'ProductoVariante';
+                            notifyAdmins({
+                                titulo: esVariante ? 'ALERTA: Variante Eliminada' : `ALERTA: ${model} Eliminado`,
+                                mensaje: esVariante 
+                                    ? `Se ha eliminado una variante de producto. Operador ID: ${currentUserId}`
+                                    : `Se ha eliminado un registro de "${model}". Operador ID: ${currentUserId}`,
+                                tipo: 'SYSTEM'
+                            }).catch(() => {});
+                        }
 
-             return result;
-          }
+                        return result;
+                    }
 
-          // Para queries normales o no auditados
-          return query(args);
+                    // Para queries normales o no auditados
+                    return query(args);
+                },
+            },
         },
-      },
-    },
-  });
+    });
 });
 
-module.exports = auditExtension;
+module.exports = { auditExtension, auditMiddleware, setAuditUser, auditContext };

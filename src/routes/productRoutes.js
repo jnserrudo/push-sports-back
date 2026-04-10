@@ -17,6 +17,15 @@ router.get('/', authMiddleware, async (req, res) => {
                 proveedor: true,
                 inventarios: {
                     select: { cantidad_actual: true }
+                },
+                variantes: {
+                    where: { activo: true },
+                    select: { 
+                        id_variante: true, 
+                        sku_variante: true, 
+                        atributos_valores: true,
+                        stock_central: true 
+                    }
                 }
             },
             orderBy: { nombre: 'asc' }

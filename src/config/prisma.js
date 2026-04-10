@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { auditExtension } = require('../services/auditService');
 
 // PrismaClient is attached to the `global` object in development to prevent
 // exhausting your database connection limit.
@@ -8,9 +9,17 @@ const { PrismaClient } = require('@prisma/client');
 
 const globalForPrisma = global;
 
-const prisma = globalForPrisma.prisma || new PrismaClient({
-    log: ['query', 'info', 'warn', 'error'],
-});
+// Crear PrismaClient con extensión de auditoría
+const createPrismaClient = () => {
+    const client = new PrismaClient({
+        log: ['query', 'info', 'warn', 'error'],
+    });
+    
+    // Aplicar extensión de auditoría
+    return client.$extends(auditExtension);
+};
+
+const prisma = globalForPrisma.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
