@@ -161,7 +161,8 @@ router.post('/con-variantes', authMiddleware, async (req, res) => {
                     id_comercio, 
                     id_producto, 
                     cantidad_actual: 0,
-                    usa_desglose_variantes: true 
+                    usa_desglose_variantes: true,
+                    comision_pactada_porcentaje: 0
                 }
             });
         }
@@ -265,6 +266,9 @@ router.post('/con-variantes', authMiddleware, async (req, res) => {
             }
 
             return { movimiento: mov, variantes: variantesProcesadas };
+        }, {
+            maxWait: 20000,
+            timeout: 30000
         });
 
         // 3. Notificar a managers

@@ -90,7 +90,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             nombre, descripcion,
             id_categoria, id_marca, id_proveedor,
             precio_venta_sugerido, precio_pushsport, costo_compra,
-            imagen_url, stock_minimo, stock_central, activo
+            imagen_url, stock_minimo, stock_central, activo, atributos
         } = req.body;
 
         const data = {};
@@ -106,6 +106,20 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         if (stock_minimo !== undefined)          data.stock_minimo = parseInt(stock_minimo);
         if (stock_central !== undefined)         data.stock_central = parseInt(stock_central);
         if (activo !== undefined)                data.activo = activo;
+        if (atributos !== undefined) {
+            // Parse JSON string if needed, or use as-is if already an object
+            if (typeof atributos === 'string') {
+                try {
+                    data.atributos = JSON.parse(atributos);
+                } catch (e) {
+                    data.atributos = {};
+                }
+            } else if (typeof atributos === 'object' && atributos !== null) {
+                data.atributos = atributos;
+            } else {
+                data.atributos = {};
+            }
+        }
 
         const producto = await prisma.producto.update({
             where: { id_producto: id },

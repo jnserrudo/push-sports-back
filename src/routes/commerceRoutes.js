@@ -16,6 +16,23 @@ router.get('/public', async (req, res) => {
     }
 });
 
+// Obtener comercio por ID
+router.get('/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const comercio = await prisma.comercio.findUnique({
+            where: { id_comercio: id },
+            include: { tipo_comercio: true }
+        });
+        if (!comercio) {
+            return res.status(404).json({ error: 'Comercio no encontrado' });
+        }
+        res.json(comercio);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener comercio' });
+    }
+});
+
 // Listar comercios (Para el Dashboard, con auth)
 router.get('/', authMiddleware, async (req, res) => {
     try {

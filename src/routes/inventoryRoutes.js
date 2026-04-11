@@ -15,8 +15,12 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'No tienes permiso para ver el inventario de otro comercio' });
         }
 
+        // Obtener TODOS los productos activos del inventario (sin filtrar por cantidad)
         const inventario = await prisma.inventarioComercio.findMany({
-            where: { id_comercio, producto: { activo: true } },
+            where: { 
+                id_comercio, 
+                producto: { activo: true }
+            },
             include: { 
                 producto: {
                     include: {
@@ -31,7 +35,6 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                     }
                 },
                 variantes: {
-                    where: { cantidad_actual: { gt: 0 } },
                     include: {
                         variante: {
                             select: {
@@ -44,8 +47,33 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                 }
             }
         });
-        res.json(inventario);
+
+        // Filtrar: mostrar productos que tienen stock (cantidad_actual > 0) 
+        // O productos con variantes que tienen stock en alguna variante
+        const inventarioFiltrado = inventario.filter(item => {
+            // Si tiene stock directo, mostrarlo
+            if (item.cantidad_actual > 0) return true;
+            
+            // Si usa variantes, verificar si alguna variante tiene stock
+            if (item.usa_desglose_variantes && item.variantes && item.variantes.length > 0) {
+                const stockVariantes = item.variantes.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0);
+                return stockVariantes > 0;
+            }
+            
+            return false;
+        });
+
+        console.log(`[DEBUG] Inventario para comercio ${id_comercio}: ${inventario.length} items totales, ${inventarioFiltrado.length} con stock`);
+        console.log(`[DEBUG] Productos en inventario:`, inventarioFiltrado.map(i => ({ 
+            id: i.id_producto, 
+            nombre: i.producto?.nombre, 
+            cantidad: i.cantidad_actual,
+            usa_variantes: i.usa_desglose_variantes,
+            stock_variantes: i.variantes?.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0)
+        })));
+        res.json(inventarioFiltrado);
     } catch (error) {
+        console.error('Error al obtener inventario:', error);
         res.status(500).json({ error: 'Error al obtener inventario' });
     }
 });
