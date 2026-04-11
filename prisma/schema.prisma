@@ -252,17 +252,49 @@ model Liquidacion {
 }
 
 model AuditoriaSistema {
-  id_auditoria     String   @id @default(uuid()) @db.Uuid
-  id_usuario       String   @db.Uuid
-  entidad_afectada String
-  accion           String
-  valor_anterior   String?  @db.Text
-  valor_nuevo      String?  @db.Text
-  fecha_hora       DateTime @default(now())
-
-  usuario          Usuario  @relation(fields: [id_usuario], references: [id_usuario])
-
+  id_auditoria        String   @id @default(uuid()) @db.Uuid
+  id_usuario          String   @db.Uuid
+  
+  // Entidad afectada
+  entidad_afectada    String   // 'Producto', 'Venta', 'Usuario', etc.
+  id_entidad_afectada String?  @db.Uuid  // ID del registro afectado para filtrado
+  
+  // Acción detallada
+  accion              String   // 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', etc.
+  descripcion_accion  String?  @db.Text  // Descripción legible de la acción
+  
+  // Datos JSON completos
+  valor_anterior      String?  @db.Text  // @deprecated - usar datos_anteriores
+  valor_nuevo         String?  @db.Text  // @deprecated - usar datos_nuevos
+  datos_anteriores    String?  @db.Text  // JSON del estado anterior completo
+  datos_nuevos        String?  @db.Text  // JSON del estado nuevo completo
+  cambios_detectados  String?  @db.Text  // JSON solo con campos cambiados {campo: {antes, despues}}
+  
+  // Contexto de la operación
+  endpoint            String?  // /api/productos/123
+  metodo_http         String?  // PUT, POST, DELETE
+  ip_usuario          String?  // 192.168.1.100
+  user_agent          String?  // Mozilla/5.0...
+  
+  // IDs relacionados para filtrado (sin FK para evitar bloqueos)
+  id_comercio         String?  @db.Uuid  // Para filtrar por sucursal
+  id_producto         String?  @db.Uuid  // Para filtrar por producto
+  id_variante         String?  @db.Uuid  // Para filtrar por variante
+  id_venta            String?  @db.Uuid  // Para filtrar por venta
+  id_proveedor        String?  @db.Uuid  // Para filtrar por proveedor
+  
+  fecha_hora          DateTime @default(now())
+  
+  usuario             Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+  
   @@map("AUDITORIA_SISTEMA")
+  @@index([entidad_afectada])
+  @@index([id_entidad_afectada])
+  @@index([id_usuario])
+  @@index([fecha_hora])
+  @@index([id_comercio])
+  @@index([id_producto])
+  @@index([id_venta])
 }
 
 model Descuento {

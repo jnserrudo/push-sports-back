@@ -15,17 +15,169 @@ const AUDITABLE_MODELS = [
     'Devolucion', 'Liquidacion'
 ];
 
-// Función para establecer el contexto de auditoría
-const setAuditUser = (userId) => {
-    const store = auditContext.getStore();
-    if (store) {
-        store.userId = userId;
+// Mapeo de campos ID por entidad
+const ENTITY_ID_FIELDS = {
+    'Producto': 'id_producto',
+    'ProductoVariante': 'id_variante',
+    'Comercio': 'id_comercio',
+    'Usuario': 'id_usuario',
+    'Categoria': 'id_categoria',
+    'Proveedor': 'id_proveedor',
+    'Marca': 'id_marca',
+    'TipoComercio': 'id_tipo_comercio',
+    'Descuento': 'id_descuento',
+    'Oferta': 'id_oferta',
+    'Combo': 'id_combo',
+    'InventarioComercio': 'id_inventario',
+    'InventarioComercioVariante': 'id_inventario_var',
+    'MovimientoStock': 'id_movimiento',
+    'MovimientoStockVariante': 'id_movimiento_var',
+    'VentaCabecera': 'id_venta',
+    'VentaDetalle': 'id_detalle',
+    'VentaDetalleVariante': 'id_detalle_var',
+    'Devolucion': 'id_devolucion',
+    'Liquidacion': 'id_liquidacion'
+};
+
+// Función para calcular diferencias entre dos objetos
+const calcularDiferencias = (anterior, nuevo) => {
+    const cambios = {};
+    const campos = new Set([...Object.keys(anterior || {}), ...Object.keys(nuevo || {})]);
+    
+    for (const campo of campos) {
+        const valorAnterior = anterior?.[campo];
+        const valorNuevo = nuevo?.[campo];
+        
+        // Comparar valores (manejar fechas, objetos, etc.)
+        const strAnterior = JSON.stringify(valorAnterior);
+        const strNuevo = JSON.stringify(valorNuevo);
+        
+        if (strAnterior !== strNuevo) {
+            cambios[campo] = {
+                antes: valorAnterior,
+                despues: valorNuevo
+            };
+        }
+    }
+    
+    return cambios;
+};
+
+// Generar descripción legible de la acción
+const generarDescripcion = (model, operation, cambios, result) => {
+    const nombresLegibles = {
+        'Producto': 'Producto',
+        'ProductoVariante': 'Variante',
+        'Comercio': 'Sucursal',
+        'Usuario': 'Usuario',
+        'Categoria': 'Categoría',
+        'Proveedor': 'Proveedor',
+        'Marca': 'Marca',
+        'TipoComercio': 'Tipo de Sede',
+        'Descuento': 'Descuento',
+        'Oferta': 'Oferta',
+        'Combo': 'Combo',
+        'InventarioComercio': 'Inventario',
+        'InventarioComercioVariante': 'Stock de Variante',
+        'MovimientoStock': 'Movimiento de Stock',
+        'MovimientoStockVariante': 'Movimiento de Variante',
+        'VentaCabecera': 'Venta',
+        'VentaDetalle': 'Detalle de Venta',
+        'VentaDetalleVariante': 'Venta con Variante',
+        'Devolucion': 'Devolución',
+        'Liquidacion': 'Liquidación'
+    };
+    
+    const nombreEntidad = nombresLegibles[model] || model;
+    const nombreItem = result?.nombre || result?.sku || result?.codigo || 'Item';
+    
+    switch (operation) {
+        case 'create':
+            return `Creó ${nombreEntidad}: "${nombreItem}"`;
+        case 'delete':
+            return `Eliminó ${nombreEntidad}: "${nombreItem}"`;
+        case 'update':
+            if (cambios && Object.keys(cambios).length > 0) {
+                const camposCambiados = Object.keys(cambios).join(', ');
+                return `Modificó ${nombreEntidad} "${nombreItem}": cambió ${camposCambiados}`;
+            }
+            return `Modificó ${nombreEntidad}: "${nombreItem}"`;
+        default:
+            return `${operation.toUpperCase()} en ${nombreEntidad}`;
     }
 };
 
-// Middleware para inicializar el contexto de auditoría
+// Extraer IDs relacionados según la entidad
+const extraerIdsRelacionados = (model, data) => {
+    const ids = {};
+    
+    switch (model) {
+        case 'Producto':
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            break;
+        case 'ProductoVariante':
+            if (data?.id_variante) ids.id_variante = data.id_variante;
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            break;
+        case 'InventarioComercio':
+            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            break;
+        case 'InventarioComercioVariante':
+            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            if (data?.id_variante) ids.id_variante = data.id_variante;
+            break;
+        case 'VentaCabecera':
+            if (data?.id_venta) ids.id_venta = data.id_venta;
+            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
+            break;
+        case 'VentaDetalle':
+        case 'VentaDetalleVariante':
+            if (data?.id_venta) ids.id_venta = data.id_venta;
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            break;
+        case 'MovimientoStock':
+        case 'MovimientoStockVariante':
+            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
+            if (data?.id_producto) ids.id_producto = data.id_producto;
+            break;
+        case 'Comercio':
+            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
+            break;
+        case 'Proveedor':
+            if (data?.id_proveedor) ids.id_proveedor = data.id_proveedor;
+            break;
+    }
+    
+    return ids;
+};
+
+// Función para establecer el contexto de auditoría con datos del request
+const setAuditContext = (data) => {
+    const store = auditContext.getStore();
+    if (store) {
+        Object.assign(store, data);
+    }
+};
+
+// Función para establecer solo el usuario (backward compatible)
+const setAuditUser = (userId) => {
+    setAuditContext({ userId });
+};
+
+// Middleware mejorado para capturar contexto completo de la solicitud
 const auditMiddleware = (req, res, next) => {
-    const store = { userId: req.user?.id_usuario || null };
+    const store = {
+        userId: req.user?.id_usuario || null,
+        userEmail: req.user?.email || null,
+        userRol: req.user?.rol || null,
+        endpoint: req.originalUrl || req.url,
+        metodo_http: req.method,
+        ip_usuario: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
+        user_agent: req.headers['user-agent']
+    };
+    
     auditContext.run(store, () => {
         next();
     });
@@ -41,30 +193,31 @@ const auditExtension = Prisma.defineExtension((client) => {
                     
                     if (AUDITABLE_MODELS.includes(model) && monitoredOps.includes(operation)) {
                         
-                        // Capturar valor anterior para updates y deletes
-                        let valorAnterior = null;
+                        // Capturar datos ANTERIORES para updates y deletes
+                        let datosAnteriores = null;
+                        let registroPrevio = null;
                         
                         if ((operation === 'update' || operation === 'delete') && args.where) {
                             try {
-                                const registroPrevio = await client[model].findUnique({ 
+                                registroPrevio = await client[model].findUnique({ 
                                     where: args.where 
                                 });
                                 if (registroPrevio) {
-                                    valorAnterior = JSON.stringify(registroPrevio);
+                                    datosAnteriores = registroPrevio;
                                 }
                             } catch (e) {
-                                console.warn(`No se pudo capturar valor anterior para ${model}:`, e.message);
+                                console.warn(`No se pudo capturar datos anteriores para ${model}:`, e.message);
                             }
                         }
                         
                         // Ejecutamos la operacion solicitada
                         const result = await query(args);
-
-                        // Obtener el ID del usuario del contexto
-                        const store = auditContext.getStore();
-                        let currentUserId = store?.userId || "00000000-0000-0000-0000-000000000000";
                         
-                        // Si no hay usuario en contexto, intentar obtener el primer usuario activo
+                        // Obtener el contexto completo de la solicitud
+                        const store = auditContext.getStore() || {};
+                        let currentUserId = store.userId || "00000000-0000-0000-0000-000000000000";
+                        
+                        // Si no hay usuario, intentar obtener el primer usuario activo
                         if (!currentUserId || currentUserId === "00000000-0000-0000-0000-000000000000") {
                             try {
                                 const firstUser = await client.usuario.findFirst({ 
@@ -76,14 +229,59 @@ const auditExtension = Prisma.defineExtension((client) => {
                                 // Ignorar error
                             }
                         }
-
-                        // Preparar datos de auditoría
+                        
+                        // Extraer ID de la entidad afectada
+                        const idField = ENTITY_ID_FIELDS[model];
+                        const idEntidadAfectada = result?.[idField] || registroPrevio?.[idField] || null;
+                        
+                        // Calcular diferencias (solo para updates)
+                        let cambiosDetectados = null;
+                        if (operation === 'update' && datosAnteriores && result) {
+                            cambiosDetectados = calcularDiferencias(datosAnteriores, result);
+                        }
+                        
+                        // Generar descripción legible
+                        const descripcionAccion = generarDescripcion(
+                            model, 
+                            operation, 
+                            cambiosDetectados, 
+                            result || registroPrevio
+                        );
+                        
+                        // Extraer IDs relacionados
+                        const idsRelacionados = extraerIdsRelacionados(
+                            model, 
+                            result || registroPrevio
+                        );
+                        
+                        // Preparar datos de auditoría COMPLETOS
                         const auditoriaData = {
+                            // Usuario
                             id_usuario: currentUserId,
+                            
+                            // Entidad afectada
                             entidad_afectada: model,
+                            id_entidad_afectada: idEntidadAfectada,
+                            
+                            // Acción
                             accion: operation.toUpperCase(),
-                            valor_nuevo: operation !== 'delete' ? JSON.stringify(result).substring(0, 10000) : null,
-                            valor_anterior: valorAnterior ? valorAnterior.substring(0, 10000) : null,
+                            descripcion_accion: descripcionAccion,
+                            
+                            // Datos completos (legacy + nuevos)
+                            valor_anterior: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 10000) : null,
+                            valor_nuevo: operation !== 'delete' && result ? JSON.stringify(result).substring(0, 10000) : null,
+                            datos_anteriores: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 20000) : null,
+                            datos_nuevos: operation !== 'delete' && result ? JSON.stringify(result).substring(0, 20000) : null,
+                            cambios_detectados: cambiosDetectados ? JSON.stringify(cambiosDetectados).substring(0, 10000) : null,
+                            
+                            // Contexto de la operación
+                            endpoint: store.endpoint || null,
+                            metodo_http: store.metodo_http || null,
+                            ip_usuario: store.ip_usuario || null,
+                            user_agent: store.user_agent || null,
+                            
+                            // IDs relacionados para filtrado
+                            ...idsRelacionados
                         };
 
                         // Registro asíncrono (no bloqueante)
@@ -96,11 +294,12 @@ const auditExtension = Prisma.defineExtension((client) => {
                             ['Producto', 'Comercio', 'Usuario', 'ProductoVariante', 'VentaCabecera'].includes(model)) {
                             const { notifyAdmins } = require('./notificationService');
                             const esVariante = model === 'ProductoVariante';
+                            const nombreItem = registroPrevio?.nombre || registroPrevio?.sku || 'Item';
                             notifyAdmins({
                                 titulo: esVariante ? 'ALERTA: Variante Eliminada' : `ALERTA: ${model} Eliminado`,
                                 mensaje: esVariante 
-                                    ? `Se ha eliminado una variante de producto. Operador ID: ${currentUserId}`
-                                    : `Se ha eliminado un registro de "${model}". Operador ID: ${currentUserId}`,
+                                    ? `Se ha eliminado la variante "${nombreItem}". Operador ID: ${currentUserId}`
+                                    : `Se ha eliminado "${nombreItem}" de tipo "${model}". Operador ID: ${currentUserId}`,
                                 tipo: 'SYSTEM'
                             }).catch(() => {});
                         }
@@ -116,4 +315,12 @@ const auditExtension = Prisma.defineExtension((client) => {
     });
 });
 
-module.exports = { auditExtension, auditMiddleware, setAuditUser, auditContext };
+module.exports = { 
+    auditExtension, 
+    auditMiddleware, 
+    setAuditUser, 
+    setAuditContext,
+    auditContext,
+    calcularDiferencias,
+    generarDescripcion
+};
