@@ -5,45 +5,199 @@ const prisma = require('../config/prisma');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { notifyCommerceManagers } = require('../services/notificationService');
 
-// Listar todos los movimientos de stock
+// ═══════════════════════════════════════════════════════════
+// LISTAR MOVIMIENTOS DE STOCK CON FILTROS AVANZADOS + PAGINACIÓN
+// ═══════════════════════════════════════════════════════════
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        // Roles 2 y 3 solo pueden ver movimientos de su propio comercio
-        const filter = (req.user.id_rol === 2 || req.user.id_rol === 3)
-            ? { id_comercio: req.user.id_comercio_asignado }
-            : {};
+        const {
+            desde,
+            hasta,
+            id_usuario,
+            id_tipo_movimiento,
+            id_producto,
+            busqueda,
+            limit = 50,
+            offset = 0
+        } = req.query;
 
-        const movimientos = await prisma.movimientoStock.findMany({
-            where: filter,
-            include: {
-                producto: true,
-                comercio: true,
-                usuario: true,
-                tipo_movimiento: true
-            },
-            orderBy: { fecha_hora: 'desc' }
+        // Construir where dinámico
+        const where = {};
+
+        // Roles 2 y 3 solo pueden ver movimientos de su propio comercio
+        if (req.user.id_rol === 2 || req.user.id_rol === 3) {
+            where.id_comercio = req.user.id_comercio_asignado;
+        }
+
+        // Filtro de fechas
+        if (desde || hasta) {
+            where.fecha_hora = {};
+            if (desde) where.fecha_hora.gte = new Date(desde);
+            if (hasta) {
+                const hastaDate = new Date(hasta);
+                hastaDate.setHours(23, 59, 59, 999);
+                where.fecha_hora.lte = hastaDate;
+            }
+        }
+
+        // Filtro por usuario
+        if (id_usuario) {
+            where.id_usuario = id_usuario;
+        }
+
+        // Filtro por tipo de movimiento
+        if (id_tipo_movimiento) {
+            where.id_tipo_movimiento = parseInt(id_tipo_movimiento);
+        }
+
+        // Filtro por producto
+        if (id_producto) {
+            where.id_producto = id_producto;
+        }
+
+        // Búsqueda por texto en nombre de producto
+        if (busqueda) {
+            where.OR = [
+                { producto: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { comercio: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { usuario: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { usuario: { apellido: { contains: busqueda, mode: 'insensitive' } } }
+            ];
+        }
+
+        const [movimientos, total] = await Promise.all([
+            prisma.movimientoStock.findMany({
+                where,
+                include: {
+                    producto: true,
+                    comercio: true,
+                    usuario: true,
+                    tipo_movimiento: true,
+                    variantes: {
+                        include: {
+                            variante: {
+                                select: {
+                                    id_variante: true,
+                                    sku_variante: true,
+                                    atributos_valores: true
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: { fecha_hora: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset)
+            }),
+            prisma.movimientoStock.count({ where })
+        ]);
+
+        // Obtener tipos de movimiento para el frontend
+        const tiposMovimiento = await prisma.tipoMovimiento.findMany({
+            orderBy: { id_tipo_movimiento: 'asc' }
         });
-        res.json(movimientos);
+
+        // Obtener usuarios que han hecho movimientos (para filtro)
+        const usuariosConMovimientos = await prisma.movimientoStock.findMany({
+            select: {
+                usuario: {
+                    select: {
+                        id_usuario: true,
+                        nombre: true,
+                        apellido: true
+                    }
+                }
+            },
+            distinct: ['id_usuario']
+        });
+
+        res.json({
+            data: movimientos,
+            total,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            tipos_movimiento: tiposMovimiento,
+            usuarios: usuariosConMovimientos.map(m => m.usuario)
+        });
     } catch (error) {
+        console.error('Error al obtener movimientos:', error);
         res.status(500).json({ error: 'Error al obtener movimientos de stock' });
     }
 });
 
-// Movimientos de un comercio específico
+// Movimientos de un comercio específico (con mismos filtros)
 router.get('/comercio/:id_comercio', authMiddleware, async (req, res) => {
     try {
         const { id_comercio } = req.params;
-        const movimientos = await prisma.movimientoStock.findMany({
-            where: { id_comercio },
-            include: {
-                producto: true,
-                usuario: true,
-                tipo_movimiento: true
-            },
-            orderBy: { fecha_hora: 'desc' }
+        const {
+            desde,
+            hasta,
+            id_usuario,
+            id_tipo_movimiento,
+            id_producto,
+            busqueda,
+            limit = 50,
+            offset = 0
+        } = req.query;
+
+        const where = { id_comercio };
+
+        if (desde || hasta) {
+            where.fecha_hora = {};
+            if (desde) where.fecha_hora.gte = new Date(desde);
+            if (hasta) {
+                const hastaDate = new Date(hasta);
+                hastaDate.setHours(23, 59, 59, 999);
+                where.fecha_hora.lte = hastaDate;
+            }
+        }
+
+        if (id_usuario) where.id_usuario = id_usuario;
+        if (id_tipo_movimiento) where.id_tipo_movimiento = parseInt(id_tipo_movimiento);
+        if (id_producto) where.id_producto = id_producto;
+
+        if (busqueda) {
+            where.OR = [
+                { producto: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { usuario: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { usuario: { apellido: { contains: busqueda, mode: 'insensitive' } } }
+            ];
+        }
+
+        const [movimientos, total] = await Promise.all([
+            prisma.movimientoStock.findMany({
+                where,
+                include: {
+                    producto: true,
+                    usuario: true,
+                    tipo_movimiento: true,
+                    variantes: {
+                        include: {
+                            variante: {
+                                select: {
+                                    id_variante: true,
+                                    sku_variante: true,
+                                    atributos_valores: true
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: { fecha_hora: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset)
+            }),
+            prisma.movimientoStock.count({ where })
+        ]);
+
+        res.json({
+            data: movimientos,
+            total,
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
-        res.json(movimientos);
     } catch (error) {
+        console.error('Error al obtener movimientos del comercio:', error);
         res.status(500).json({ error: 'Error al obtener movimientos del comercio' });
     }
 });

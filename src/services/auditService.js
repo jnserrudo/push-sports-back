@@ -97,9 +97,18 @@ const generarDescripcion = (model, operation, cambios, result) => {
         case 'delete':
             return `Eliminó ${nombreEntidad}: "${nombreItem}"`;
         case 'update':
+            // Detectar desactivación/activación (borrado lógico)
+            if (cambios && cambios.activo) {
+                if (cambios.activo.despues === false) return `Desactivó ${nombreEntidad}: "${nombreItem}"`;
+                if (cambios.activo.despues === true) return `Activó ${nombreEntidad}: "${nombreItem}"`;
+            }
+
             if (cambios && Object.keys(cambios).length > 0) {
-                const camposCambiados = Object.keys(cambios).join(', ');
-                return `Modificó ${nombreEntidad} "${nombreItem}": cambió ${camposCambiados}`;
+                const camposCambiados = Object.keys(cambios)
+                    .filter(c => !c.startsWith('id_') && c !== 'updatedAt')
+                    .slice(0, 3)
+                    .join(', ');
+                return `Modificó ${nombreEntidad} "${nombreItem}": cambió ${camposCambiados}${Object.keys(cambios).length > 3 ? '...' : ''}`;
             }
             return `Modificó ${nombreEntidad}: "${nombreItem}"`;
         default:
@@ -234,10 +243,14 @@ const auditExtension = Prisma.defineExtension((client) => {
                         const idField = ENTITY_ID_FIELDS[model];
                         const idEntidadAfectada = result?.[idField] || registroPrevio?.[idField] || null;
                         
-                        // Calcular diferencias (solo para updates)
+                        // Calcular diferencias para TODAS las operaciones
                         let cambiosDetectados = null;
                         if (operation === 'update' && datosAnteriores && result) {
                             cambiosDetectados = calcularDiferencias(datosAnteriores, result);
+                        } else if (operation === 'create' && result) {
+                            cambiosDetectados = calcularDiferencias(null, result);
+                        } else if (operation === 'delete' && registroPrevio) {
+                            cambiosDetectados = calcularDiferencias(registroPrevio, null);
                         }
                         
                         // Generar descripción legible
