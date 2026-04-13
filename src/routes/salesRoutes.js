@@ -1,4 +1,5 @@
 const express = require('express');
+const { checkAndSendStockAlert } = require('../services/stockAlertService');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const inventoryService = require('../services/inventoryService');

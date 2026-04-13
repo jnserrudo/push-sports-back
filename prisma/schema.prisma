@@ -18,6 +18,11 @@ model Usuario {
   id_rol               Int
   id_comercio_asignado String?   @db.Uuid
   activo               Boolean   @default(true)
+  
+  // Campos de verificación por email
+  email_verificado     Boolean   @default(false)
+  otp_code             String?
+  otp_expira_en        DateTime?
 
   rol                  Rol       @relation(fields: [id_rol], references: [id_rol])
   comercio_asignado    Comercio? @relation(fields: [id_comercio_asignado], references: [id_comercio])

@@ -111,52 +111,82 @@ const generarDescripcion = (model, operation, cambios, result) => {
                 return `Modificó ${nombreEntidad} "${nombreItem}": cambió ${camposCambiados}${Object.keys(cambios).length > 3 ? '...' : ''}`;
             }
             return `Modificó ${nombreEntidad}: "${nombreItem}"`;
+        case 'createMany':
+            return `Creó múltiples registros (${result?.count || 0}) de ${nombreEntidad}`;
+        case 'updateMany':
+            return `Modificó múltiples registros (${result?.count || 0}) de ${nombreEntidad}`;
+        case 'deleteMany':
+            return `Eliminó múltiples registros (${result?.count || 0}) de ${nombreEntidad}`;
         default:
             return `${operation.toUpperCase()} en ${nombreEntidad}`;
     }
 };
 
-// Extraer IDs relacionados según la entidad
-const extraerIdsRelacionados = (model, data) => {
+// Extraer IDs relacionados según la entidad (async para poder resolver padres)
+const extraerIdsRelacionados = async (client, model, data) => {
     const ids = {};
+    if (!data) return ids;
     
-    switch (model) {
-        case 'Producto':
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            break;
-        case 'ProductoVariante':
-            if (data?.id_variante) ids.id_variante = data.id_variante;
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            break;
-        case 'InventarioComercio':
-            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            break;
-        case 'InventarioComercioVariante':
-            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            if (data?.id_variante) ids.id_variante = data.id_variante;
-            break;
-        case 'VentaCabecera':
-            if (data?.id_venta) ids.id_venta = data.id_venta;
-            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
-            break;
-        case 'VentaDetalle':
-        case 'VentaDetalleVariante':
-            if (data?.id_venta) ids.id_venta = data.id_venta;
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            break;
-        case 'MovimientoStock':
-        case 'MovimientoStockVariante':
-            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
-            if (data?.id_producto) ids.id_producto = data.id_producto;
-            break;
-        case 'Comercio':
-            if (data?.id_comercio) ids.id_comercio = data.id_comercio;
-            break;
-        case 'Proveedor':
-            if (data?.id_proveedor) ids.id_proveedor = data.id_proveedor;
-            break;
+    // Extraer IDs directos que estén presentes en el resultado
+    if (data.id_producto) ids.id_producto = data.id_producto;
+    if (data.id_comercio) ids.id_comercio = data.id_comercio;
+    if (data.id_variante) ids.id_variante = data.id_variante;
+    if (data.id_venta) ids.id_venta = data.id_venta;
+    if (data.id_proveedor) ids.id_proveedor = data.id_proveedor;
+    
+    // Para tablas hijas que NO tienen id_comercio/id_producto directamente,
+    // buscar en la tabla padre.
+    try {
+        switch (model) {
+            case 'MovimientoStockVariante':
+                // Tiene id_movimiento → buscar MovimientoStock → id_comercio, id_producto
+                if (data.id_movimiento && (!ids.id_comercio || !ids.id_producto)) {
+                    const padre = await client.movimientoStock.findUnique({
+                        where: { id_movimiento: data.id_movimiento },
+                        select: { id_comercio: true, id_producto: true }
+                    });
+                    if (padre) {
+                        if (!ids.id_comercio) ids.id_comercio = padre.id_comercio;
+                        if (!ids.id_producto) ids.id_producto = padre.id_producto;
+                    }
+                }
+                break;
+                
+            case 'InventarioComercioVariante':
+                // Tiene id_inventario → buscar InventarioComercio → id_comercio, id_producto
+                if (data.id_inventario && (!ids.id_comercio || !ids.id_producto)) {
+                    const padre = await client.inventarioComercio.findUnique({
+                        where: { id_inventario: data.id_inventario },
+                        select: { id_comercio: true, id_producto: true }
+                    });
+                    if (padre) {
+                        if (!ids.id_comercio) ids.id_comercio = padre.id_comercio;
+                        if (!ids.id_producto) ids.id_producto = padre.id_producto;
+                    }
+                }
+                break;
+                
+            case 'VentaDetalleVariante':
+                // Tiene id_detalle → buscar VentaDetalle → id_producto, id_venta
+                if (data.id_detalle && (!ids.id_producto || !ids.id_venta)) {
+                    const padre = await client.ventaDetalle.findUnique({
+                        where: { id_detalle: data.id_detalle },
+                        select: { id_producto: true, id_venta: true }
+                    });
+                    if (padre) {
+                        if (!ids.id_producto) ids.id_producto = padre.id_producto;
+                        if (!ids.id_venta) ids.id_venta = padre.id_venta;
+                    }
+                }
+                break;
+                
+            case 'ProductoVariante':
+                // Ya tiene id_producto, pero asegurar id_variante
+                if (!ids.id_variante && data.id_variante) ids.id_variante = data.id_variante;
+                break;
+        }
+    } catch (e) {
+        console.warn(`[Audit] No se pudieron resolver IDs padre para ${model}:`, e.message);
     }
     
     return ids;
@@ -198,7 +228,7 @@ const auditExtension = Prisma.defineExtension((client) => {
             $allModels: {
                 async $allOperations({ model, operation, args, query }) {
                     
-                    const monitoredOps = ['create', 'update', 'delete'];
+                    const monitoredOps = ['create', 'update', 'delete', 'createMany', 'updateMany', 'deleteMany'];
                     
                     if (AUDITABLE_MODELS.includes(model) && monitoredOps.includes(operation)) {
                         
@@ -261,8 +291,9 @@ const auditExtension = Prisma.defineExtension((client) => {
                             result || registroPrevio
                         );
                         
-                        // Extraer IDs relacionados
-                        const idsRelacionados = extraerIdsRelacionados(
+                        // Extraer IDs relacionados (con resolución de padres)
+                        const idsRelacionados = await extraerIdsRelacionados(
+                            client,
                             model, 
                             result || registroPrevio
                         );
@@ -282,9 +313,9 @@ const auditExtension = Prisma.defineExtension((client) => {
                             
                             // Datos completos (legacy + nuevos)
                             valor_anterior: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 10000) : null,
-                            valor_nuevo: operation !== 'delete' && result ? JSON.stringify(result).substring(0, 10000) : null,
+                            valor_nuevo: !['delete', 'deleteMany'].includes(operation) && result ? JSON.stringify(result).substring(0, 10000) : null,
                             datos_anteriores: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 20000) : null,
-                            datos_nuevos: operation !== 'delete' && result ? JSON.stringify(result).substring(0, 20000) : null,
+                            datos_nuevos: !['delete', 'deleteMany'].includes(operation) && (result || args.data) ? JSON.stringify(result || args.data).substring(0, 20000) : null,
                             cambios_detectados: cambiosDetectados ? JSON.stringify(cambiosDetectados).substring(0, 10000) : null,
                             
                             // Contexto de la operación

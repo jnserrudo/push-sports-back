@@ -4,18 +4,60 @@ const prisma = require('../config/prisma');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
 const { notifyCommerceManagers } = require('../services/notificationService');
 
+// Validar si un string es UUID válido
+const isValidUUID = (uuid) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+
+// Listar todo el inventario (Solo SUPER_ADMIN)
+router.get('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
+    try {
+        const inventarios = await prisma.inventarioComercio.findMany({
+            where: { producto: { activo: true } },
+            include: { 
+                producto: {
+                    include: {
+                        variantes: {
+                            where: { activo: true },
+                            select: { id_variante: true, sku_variante: true, atributos_valores: true }
+                        }
+                    }
+                },
+                comercio: {
+                    select: { nombre: true }
+                },
+                variantes: {
+                    include: {
+                        variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
+                    }
+                }
+            }
+        });
+
+        // Solo devolvemos el inventario plano, el frontend ya sabe manejar los objetos anidados
+        res.json(inventarios);
+    } catch (error) {
+        console.error('Error GET /inventarios:', error);
+        res.status(500).json({ error: 'Error al obtener todo el inventario' });
+    }
+});
+
 // Listar inventario de un comercio
 // SI es Supervisor (2) o Vendedor (3), solo puede ver el suyo.
 router.get('/:id_comercio', authMiddleware, async (req, res) => {
     try {
         const { id_comercio } = req.params;
 
+        if (!isValidUUID(id_comercio)) {
+            return res.status(400).json({ error: 'ID de comercio inválido' });
+        }
+
         // Filtro de seguridad por rol
         if ((req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'No tienes permiso para ver el inventario de otro comercio' });
         }
 
-        // Obtener TODOS los productos activos del inventario (sin filtrar por cantidad)
+        const { soloConStock } = req.query;
+
+        // Obtener TODOS los productos activos del inventario
         const inventario = await prisma.inventarioComercio.findMany({
             where: { 
                 id_comercio, 
@@ -34,6 +76,9 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                         }
                     }
                 },
+                comercio: {
+                    select: { nombre: true }
+                },
                 variantes: {
                     include: {
                         variante: {
@@ -48,30 +93,27 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
             }
         });
 
-        // Filtrar: mostrar productos que tienen stock (cantidad_actual > 0) 
-        // O productos con variantes que tienen stock en alguna variante
-        const inventarioFiltrado = inventario.filter(item => {
-            // Si tiene stock directo, mostrarlo
-            if (item.cantidad_actual > 0) return true;
-            
-            // Si usa variantes, verificar si alguna variante tiene stock
-            if (item.usa_desglose_variantes && item.variantes && item.variantes.length > 0) {
-                const stockVariantes = item.variantes.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0);
-                return stockVariantes > 0;
-            }
-            
-            return false;
-        });
+        // Filtrar solo si se solicita explícitamente (ej: desde el POS)
+        let inventarioFinal = inventario;
+        if (soloConStock === 'true') {
+            inventarioFinal = inventario.filter(item => {
+                if (item.cantidad_actual > 0) return true;
+                if (item.usa_desglose_variantes && item.variantes && item.variantes.length > 0) {
+                    const stockVariantes = item.variantes.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0);
+                    return stockVariantes > 0;
+                }
+                return false;
+            });
+        }
 
-        console.log(`[DEBUG] Inventario para comercio ${id_comercio}: ${inventario.length} items totales, ${inventarioFiltrado.length} con stock`);
-        console.log(`[DEBUG] Productos en inventario:`, inventarioFiltrado.map(i => ({ 
-            id: i.id_producto, 
-            nombre: i.producto?.nombre, 
-            cantidad: i.cantidad_actual,
-            usa_variantes: i.usa_desglose_variantes,
-            stock_variantes: i.variantes?.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0)
-        })));
-        res.json(inventarioFiltrado);
+        // Mapeamos el nombre de la sucursal por conveniencia pero mantenemos el objeto comercio
+        const inventarioFinalResponse = inventarioFinal.map(item => ({
+            ...item,
+            sucursal_nombre: item.comercio?.nombre || 'Desconocido'
+        }));
+
+        console.log(`[DEBUG] Inventario para comercio ${id_comercio}: ${inventario.length} items totales, devueltos ${inventarioFinal.length}`);
+        res.json(inventarioFinalResponse);
     } catch (error) {
         console.error('Error al obtener inventario:', error);
         res.status(500).json({ error: 'Error al obtener inventario' });

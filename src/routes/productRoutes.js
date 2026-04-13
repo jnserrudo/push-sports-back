@@ -19,7 +19,6 @@ router.get('/', authMiddleware, async (req, res) => {
                     select: { cantidad_actual: true }
                 },
                 variantes: {
-                    where: { activo: true },
                     select: { 
                         id_variante: true, 
                         sku_variante: true, 
@@ -31,10 +30,11 @@ router.get('/', authMiddleware, async (req, res) => {
             orderBy: { nombre: 'asc' }
         });
 
-        // Calcular stock_total para el frontend
+        // Calcular stock_total para el frontend de forma robusta
         const result = productos.map(p => {
-            const total = p.inventarios.reduce((acc, inv) => acc + (inv.cantidad_actual || 0), 0);
-            const { inventarios, ...rest } = p;
+            const inventarios = p.inventarios || [];
+            const total = inventarios.reduce((acc, inv) => acc + (inv.cantidad_actual || 0), 0);
+            const { inventarios: _, ...rest } = p; // Usamos _ para descartar inventarios del objeto final
             return { ...rest, stock_total: total };
         });
 

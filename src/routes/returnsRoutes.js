@@ -47,6 +47,13 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
             return res.status(404).json({ error: 'Venta no encontrada.' });
         }
 
+        // ── 2a. Validar que la venta NO esté liquidada ────────────────────
+        if (venta.id_liquidacion) {
+            return res.status(400).json({ 
+                error: 'No se pueden realizar devoluciones sobre una venta que ya ha sido LIQUIDADA por administración.' 
+            });
+        }
+
         // Roles 2 y 3 solo pueden operar en su propio comercio
         if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== venta.id_comercio) {
             return res.status(403).json({

@@ -1,5 +1,5 @@
 const prisma = require('../config/prisma');
-const { notifyAdmins } = require('./notificationService');
+const { checkAndSendStockAlert } = require('./stockAlertService');
 
 const inventoryService = {
   /**
@@ -15,38 +15,30 @@ const inventoryService = {
 
       if (!tipoMov) throw new Error("Tipo de movimiento no válido");
 
-      // 2. Obtener el inventario actual
-      let inventario = await tx.inventarioComercio.findUnique({
+      // 2. Actualizar el inventario de forma ATÓMICA (Atomic Update)
+      // Esto previene que dos transacciones simultáneas sobrescriban el saldo incorrectamente.
+      const cambioReal = Math.abs(cantidad_cambio) * tipoMov.factor_multiplicador;
+
+      const inventarioActualizado = await tx.inventarioComercio.upsert({
         where: {
           id_comercio_id_producto: {
             id_comercio: id_comercio,
             id_producto: id_producto,
           },
         },
+        update: {
+          cantidad_actual: { increment: cambioReal }
+        },
+        create: {
+          id_comercio: id_comercio,
+          id_producto: id_producto,
+          cantidad_actual: cambioReal > 0 ? cambioReal : 0,
+          comision_pactada_porcentaje: 0,
+        }
       });
 
-      // Si no existe, crearlo con 0
-      if (!inventario) {
-        inventario = await tx.inventarioComercio.create({
-          data: {
-            id_comercio: id_comercio,
-            id_producto: id_producto,
-            cantidad_actual: 0,
-            comision_pactada_porcentaje: 0, 
-          },
-        });
-      }
-
-      const saldo_anterior = inventario.cantidad_actual;
-      // Multiplicar por el factor (ej: Venta = -1, Ingreso = 1)
-      const cambioReal = Math.abs(cantidad_cambio) * tipoMov.factor_multiplicador;
-      const saldo_posterior = saldo_anterior + cambioReal;
-
-      // 3. Actualizar el inventario
-      const inventarioActualizado = await tx.inventarioComercio.update({
-        where: { id_inventario: inventario.id_inventario },
-        data: { cantidad_actual: saldo_posterior },
-      });
+      const saldo_posterior = inventarioActualizado.cantidad_actual;
+      const saldo_anterior = saldo_posterior - cambioReal;
 
       // 4. Registrar el movimiento en Kardex
       const movimiento = await tx.movimientoStock.create({
@@ -61,19 +53,11 @@ const inventoryService = {
         },
       });
 
-      // 5. Evaluar Notificaciones de Stock Mínimo
-      if (inventarioActualizado.cantidad_actual <= inventarioActualizado.stock_minimo_alerta) {
-        // En lugar de notificar al usuario que hace la venta (ej. Vendedor), notificar a los Administradores
-        try {
-             await notifyAdmins({
-                 titulo: 'ALERTA: Stock Mínimo',
-                 mensaje: `El producto ID ${id_producto} en el comercio ID ${id_comercio} ha alcanzado o caído por debajo del stock mínimo (${inventarioActualizado.stock_minimo_alerta}). Stock actual: ${inventarioActualizado.cantidad_actual}.`,
-                 tipo: 'STOCK_ALERT'
-             });
-        } catch (error) {
-             console.error('Error al notificar stock minimo a admins:', error);
-        }
-      }
+      // 5. Evaluar Notificaciones de Stock Mínimo (Email + DB)
+      // Hook de alerta asíncrono (no bloquea la transacción)
+      setTimeout(() => {
+          checkAndSendStockAlert(id_comercio, id_producto);
+      }, 0);
 
       return { inventario: inventarioActualizado, movimiento };
     };

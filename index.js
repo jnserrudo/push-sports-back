@@ -43,6 +43,9 @@ const comboRoutes = require('./src/routes/comboRoutes');
 const returnsRoutes = require('./src/routes/returnsRoutes');
 const tipoComercioRoutes = require('./src/routes/tipoComercioRoutes');
 const productVariantRoutes = require('./src/routes/productVariantRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const reportRoutes = require('./src/routes/reportRoutes');
+
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -61,7 +64,11 @@ app.use('/api/combos', comboRoutes);
 app.use('/api/devoluciones', returnsRoutes);
 app.use('/api/tipos-comercio', tipoComercioRoutes);
 app.use('/api/variantes', productVariantRoutes);
-app.use('/api', authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reportes', reportRoutes);
+
+// Auth Routes - Se registran después de los middlewares básicos
+app.use('/api/auth', authRoutes);
 
 // Configuración de Swagger
 const fs = require('fs');
