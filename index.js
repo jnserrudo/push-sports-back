@@ -46,6 +46,10 @@ const productVariantRoutes = require('./src/routes/productVariantRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const eventRoutes = require('./src/routes/eventRoutes');
+const publicRoutes = require('./src/routes/publicRoutes');
+
+// Rutas Públicas (B2C) — SIN autenticación JWT
+app.use('/api/public', publicRoutes);
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);

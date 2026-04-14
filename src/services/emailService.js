@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
 const validator = require('validator');
+const jwt = require('jsonwebtoken');
 
 dotenv.config();
  
@@ -7,6 +8,47 @@ dotenv.config();
 const brevoApiKey = process.env.BREVO_API_KEY;
 const fromEmail = process.env.FROM_EMAIL || 'jnserrudo@gmail.com';
 const fromName = process.env.FROM_NAME || 'Push Sport';
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+/**
+ * Genera un JWT específico para desuscripción.
+ * Expira en 30 días para dar tiempo al usuario de hacer clic.
+ * No da acceso a ninguna acción de escritura más que el opt-out.
+ * @param {string} email - Email del destinatario.
+ * @returns {string} JWT token firmado.
+ */
+const generateUnsubscribeToken = (email) => {
+    return jwt.sign(
+        { email, purpose: 'unsubscribe' },
+        process.env.JWT_SECRET,
+        { expiresIn: '30d' }
+    );
+};
+
+/**
+ * Genera el footer HTML estándar para emails de marketing.
+ * Incluye el enlace de desuscripción seguro con token JWT.
+ * @param {string} email - Email del destinatario.
+ * @returns {string} HTML del footer.
+ */
+const generateMarketingFooter = (email) => {
+    const token = generateUnsubscribeToken(email);
+    // Compatible con HashRouter (#/unsubscribe) o BrowserRouter
+    const unsubscribeUrl = `${frontendUrl}/#/unsubscribe?token=${token}`;
+    return `
+    <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #262626; text-align: center;">
+        <p style="font-size: 11px; color: #525252; margin: 0 0 8px 0;">
+            Recibís este correo porque te registraste en Push Sport o diste tu consentimiento de comunicaciones.
+        </p>
+        <a href="${unsubscribeUrl}" style="font-size: 11px; color: #737373; text-decoration: underline;">
+            Dejar de recibir comunicaciones promocionales
+        </a>
+        <p style="font-size: 10px; color: #404040; margin: 12px 0 0 0;">
+            &copy; ${new Date().getFullYear()} Push Sport. Todos los derechos reservados.
+        </p>
+    </div>
+    `;
+};
 
 /**
  * Template HTML para email de verificación (OTP)
@@ -282,10 +324,13 @@ const sendLowStockAlert = async (emails, data) => {
  * Enviar Reporte Semanal
  */
 const sendWeeklyReport = async (email, data, nombreAdmin) => {
-    const subject = `📊 Reporte Semanal Push Sport - ${data.sucursal || 'Global'}`;
-    const html = generateWeeklyReportTemplate(data, nombreAdmin);
+    const subject = `Reporte Semanal Push Sport - ${data.sucursal || 'Global'}`;
+    // Inyectar footer con desuscripción al ser un email de tipo comercial/informativo
+    const footer = generateMarketingFooter(email);
+    const html = generateWeeklyReportTemplate(data, nombreAdmin).replace('</body>', `${footer}</body>`);
     return await sendEmail(email, subject, "Tu reporte semanal ha llegado", html);
 };
+
 
 /**
  * Enviar Email de Bienvenida / Verificación Exitosa
@@ -310,5 +355,7 @@ module.exports = {
     sendResetPasswordEmail,
     sendLowStockAlert,
     sendWeeklyReport,
-    sendWelcomeEmail
+    sendWelcomeEmail,
+    generateUnsubscribeToken,
+    generateMarketingFooter
 };
