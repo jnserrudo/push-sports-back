@@ -23,9 +23,13 @@ model Usuario {
   email_verificado     Boolean   @default(false)
   otp_code             String?
   otp_expira_en        DateTime?
+  // Campos para Leads/Eventos
+  id_evento_origen     String?   @db.Uuid
+  acepta_marketing     Boolean   @default(true)
 
   rol                  Rol       @relation(fields: [id_rol], references: [id_rol])
   comercio_asignado    Comercio? @relation(fields: [id_comercio_asignado], references: [id_comercio])
+  evento_origen        Evento?   @relation(fields: [id_evento_origen], references: [id_evento])
 
   notificaciones       Notificacion[]
   ventas_procesadas    VentaCabecera[]
@@ -433,4 +437,18 @@ model VentaDetalleVariante {
   variante             ProductoVariante @relation(fields: [id_variante], references: [id_variante])
 
   @@map("VENTAS_DETALLE_VARIANTES")
+}
+
+model Evento {
+  id_evento        String    @id @default(uuid()) @db.Uuid
+  nombre           String
+  recompensa_texto String?
+  fecha_inicio     DateTime?
+  fecha_fin        DateTime?
+  activo           Boolean   @default(true)
+  created_at       DateTime  @default(now())
+
+  usuarios_captados Usuario[]
+
+  @@map("EVENTOS")
 }

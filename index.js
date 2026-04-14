@@ -45,7 +45,7 @@ const tipoComercioRoutes = require('./src/routes/tipoComercioRoutes');
 const productVariantRoutes = require('./src/routes/productVariantRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
-
+const eventRoutes = require('./src/routes/eventRoutes');
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
@@ -66,6 +66,7 @@ app.use('/api/tipos-comercio', tipoComercioRoutes);
 app.use('/api/variantes', productVariantRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reportes', reportRoutes);
+app.use('/api/eventos', eventRoutes);
 
 // Auth Routes - Se registran después de los middlewares básicos
 app.use('/api/auth', authRoutes);

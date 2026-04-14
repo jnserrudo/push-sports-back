@@ -12,7 +12,8 @@ const AUDITABLE_MODELS = [
     'InventarioComercio', 'InventarioComercioVariante',
     'MovimientoStock', 'MovimientoStockVariante',
     'VentaCabecera', 'VentaDetalle', 'VentaDetalleVariante',
-    'Devolucion', 'Liquidacion'
+    'Devolucion', 'Liquidacion',
+    'Evento'
 ];
 
 // Mapeo de campos ID por entidad
@@ -36,7 +37,8 @@ const ENTITY_ID_FIELDS = {
     'VentaDetalle': 'id_detalle',
     'VentaDetalleVariante': 'id_detalle_var',
     'Devolucion': 'id_devolucion',
-    'Liquidacion': 'id_liquidacion'
+    'Liquidacion': 'id_liquidacion',
+    'Evento': 'id_evento'
 };
 
 // Función para calcular diferencias entre dos objetos
@@ -85,7 +87,8 @@ const generarDescripcion = (model, operation, cambios, result) => {
         'VentaDetalle': 'Detalle de Venta',
         'VentaDetalleVariante': 'Venta con Variante',
         'Devolucion': 'Devolución',
-        'Liquidacion': 'Liquidación'
+        'Liquidacion': 'Liquidación',
+        'Evento': 'Evento/Campaña'
     };
     
     const nombreEntidad = nombresLegibles[model] || model;

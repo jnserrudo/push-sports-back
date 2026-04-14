@@ -64,7 +64,7 @@ function generateOTP() {
 // REGISTER PUBLIC (con OTP y Turnstile)
 router.post('/register', async (req, res) => {
     try {
-        const { nombre, apellido, username, email, password, captchaToken } = req.body;
+        const { nombre, apellido, username, email, password, captchaToken, id_evento_origen, acepta_marketing } = req.body;
         
         // 1. Validar Turnstile
         const isHuman = await validateTurnstile(captchaToken, req.ip);
@@ -106,8 +106,18 @@ router.post('/register', async (req, res) => {
                 activo: true,
                 email_verificado: false,
                 otp_code: otpCode,
-                otp_expira_en: otpExpira
+                otp_expira_en: otpExpira,
+                id_evento_origen: id_evento_origen || null,
+                acepta_marketing: acepta_marketing !== undefined ? acepta_marketing : true
             }
+        });
+
+        // Inyectar el usuario recién creado en el contexto de auditoría
+        // (para que el registro de auditoría se auto-atribuya en vez de aparecer como sistema)
+        const { setAuditContext } = require('../services/auditService');
+        setAuditContext({ 
+            userId: usuario.id_usuario, 
+            userEmail: usuario.email 
         });
 
         // Intentar enviar email (no bloqueante para el flujo, pero logueamos)
@@ -119,10 +129,17 @@ router.post('/register', async (req, res) => {
 
         const { password_hash: _, ...userWithoutPass } = usuario;
 
-        // Notificar a admins
+        // Notificar a admins con contexto del evento si aplica
+        let msgEvento = '';
+        if (id_evento_origen) {
+            try {
+                const evento = await prisma.evento.findUnique({ where: { id_evento: id_evento_origen }, select: { nombre: true } });
+                if (evento) msgEvento = ` (Vía campaña: "${evento.nombre}")`;
+            } catch {}
+        }
         await notifyAdmins({
-            titulo: 'Nuevo Registro (Pendiente Verificación)',
-            mensaje: `El usuario ${nombre} ${apellido} (${email}) se ha registrado.`,
+            titulo: 'Nuevo Registro de Cliente' + (id_evento_origen ? ' — QR Campaña' : ''),
+            mensaje: `${nombre} ${apellido} (${email}) se registró${msgEvento}. Pendiente verificación de email.`,
             tipo: 'SYSTEM'
         });
 
