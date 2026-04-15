@@ -35,11 +35,6 @@ async function validateTurnstile(token, ip) {
         return true;
     }
 
-    if (!token) {
-        console.warn('⚠️ ATENCIÓN: Captcha no proporcionado. Bypass de emergencia activado.');
-        return true; // Bypass temporal para emergencias en producción
-    }
-
     try {
         const formData = new URLSearchParams();
         formData.append('secret', SECRET_KEY);
