@@ -15,6 +15,15 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'API running' });
 });
 
+// Ruta raíz para evitar 404 y verificar operatividad
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        status: 'online', 
+        message: 'Push Sport API - Gateway Operativo',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Importar Prisma ya extendido con auditoría
 const prisma = require('./src/config/prisma');
 const { auditMiddleware } = require('./src/services/auditService');
