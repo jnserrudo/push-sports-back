@@ -36,10 +36,15 @@ async function validateTurnstile(token, ip) {
     }
 
     try {
-        const formData = new URLSearchParams();
+        // Intentar obtener la IP real del cliente si estamos detrás de un proxy (Render)
+        const clientIp = ip || '0.0.0.0';
+        
         formData.append('secret', SECRET_KEY);
         formData.append('response', token);
-        formData.append('remoteip', ip);
+        // remoteip es opcional, si da problemas lo quitaremos, pero intentamos con la real
+        if (clientIp !== '::1' && clientIp !== '127.0.0.1') {
+            formData.append('remoteip', clientIp);
+        }
 
         const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
             method: 'POST',
