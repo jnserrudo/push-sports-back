@@ -36,22 +36,19 @@ async function validateTurnstile(token, ip) {
     }
 
     try {
-        // Intentar obtener la IP real del cliente si estamos detrás de un proxy (Render)
-        const clientIp = ip || '0.0.0.0';
-        
+        const formData = new URLSearchParams();
         formData.append('secret', SECRET_KEY);
         formData.append('response', token);
-        // remoteip es opcional, si da problemas lo quitaremos, pero intentamos con la real
-        if (clientIp !== '::1' && clientIp !== '127.0.0.1') {
-            formData.append('remoteip', clientIp);
-        }
-
+        
+        // Eliminamos remoteip para evitar falsos negativos detrás del proxy de Render
+        
         const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
             method: 'POST',
             body: formData
         });
 
         const outcome = await result.json();
+        
         if (!outcome.success) {
             console.error('❌ FALLO TURNSTILE:', outcome['error-codes'] || outcome);
             // Si el error es una clave secreta inválida, dejamos pasar para no bloquear
@@ -168,6 +165,11 @@ router.post('/register', async (req, res) => {
 
 // LOGIN
 router.post('/login', async (req, res) => {
+    console.log('--- INTENTO DE LOGIN RECIBIDO ---', { 
+        identifier: req.body.identifier || req.body.email || req.body.username,
+        hasToken: !!req.body.captchaToken,
+        tokenLength: req.body.captchaToken?.length || 0
+    });
     try {
         const { identifier, email, username, password, captchaToken } = req.body;
         const loginId = identifier || email || username;
