@@ -9,12 +9,13 @@ router.get('/stats', authMiddleware, async (req, res) => {
         const isSuperAdmin = req.user.id_rol === 1;
 
         // Si es Admin de Sucursal y no es SuperAdmin, forzamos sucursalId
-        const targetSucursalId = isSuperAdmin ? sucursalId : req.user.id_comercio_asignado;
+        // Si sucursalId es 'ALL', lo tratamos como null para traer datos globales
+        const targetSucursalId = (isSuperAdmin && sucursalId !== 'ALL') ? sucursalId : (isSuperAdmin ? null : req.user.id_comercio_asignado);
 
         // 1. Métricas Principales (Counts & Sums)
         const [totalCaja, productosCount, usuariosCount] = await Promise.all([
             // Saldo acumulado
-            targetSucursalId 
+            targetSucursalId && targetSucursalId !== 'ALL'
                 ? prisma.comercio.findUnique({ where: { id_comercio: targetSucursalId }, select: { saldo_acumulado_mili: true } })
                 : prisma.comercio.aggregate({ _sum: { saldo_acumulado_mili: true }, where: { activo: true } }),
             

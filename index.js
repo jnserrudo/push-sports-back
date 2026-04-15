@@ -51,6 +51,9 @@ const publicRoutes = require('./src/routes/publicRoutes');
 // Rutas Públicas (B2C) — SIN autenticación JWT
 app.use('/api/public', publicRoutes);
 
+// Auth Routes - Cargamos esto ANTES para que /api/login etc funcionen correctamente
+app.use('/api', authRoutes);
+
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
 app.use('/api/productos', productRoutes);
@@ -71,9 +74,6 @@ app.use('/api/variantes', productVariantRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reportes', reportRoutes);
 app.use('/api/eventos', eventRoutes);
-
-// Auth Routes - Se registran después de los middlewares básicos
-app.use('/api/auth', authRoutes);
 
 // Configuración de Swagger
 const fs = require('fs');
