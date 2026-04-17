@@ -86,6 +86,12 @@ const generateVerificationEmailTemplate = (otpCode, nombre) => `
             Este código expirará en <span class="highlight">15 minutos</span>.<br>
             Si no solicitaste este código, puedes ignorar este mensaje de forma segura.
         </div>
+        <a href="https://push-sports-front.onrender.com/" target="_blank" style="display: inline-block; margin-top: 20px; padding: 14px 28px; background-color: #00e5ff; color: #000000; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 14px; text-transform: uppercase; transition: transform 0.2s;">
+            Acceder al Sistema
+        </a>
+        <div class="text" style="font-size: 11px; margin-top: 15px; color: #737373;">
+            Una vez verificado tu código, podrás acceder al sistema completo.
+        </div>
         <div class="footer">
             © 2026 Push Sport. Sistema de Gestión Profesional.
         </div>
@@ -338,13 +344,48 @@ const sendWeeklyReport = async (email, data, nombreAdmin) => {
 const sendWelcomeEmail = async (email, nombre) => {
     const subject = "🚀 ¡Bienvenido a Push Sport! Cuenta Verificada";
     const html = `
-        <div style="background:#0d0d0d; color:#fff; padding:40px; font-family:sans-serif; text-align:center;">
-            <h1 style="color:#00e5ff;">¡Hola ${nombre}!</h1>
-            <p>Tu cuenta ha sido verificada con éxito.</p>
-            <p>Ya puedes acceder a todas las funciones profesionales de la plataforma.</p>
-            <br><br>
-            <small>© 2026 Push Sport</small>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { background-color: #0d0d0d; color: #ffffff; font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
+        .container { max-width: 500px; margin: 40px auto; padding: 40px 30px; border-radius: 24px; background: linear-gradient(145deg, #161616, #0a0a0a); border: 1px solid #262626; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+        .logo { font-size: 24px; font-weight: 900; letter-spacing: -1px; color: #ffffff; margin-bottom: 30px; text-transform: uppercase; }
+        .logo span { color: #00e5ff; }
+        .title { font-size: 22px; font-weight: 700; margin-bottom: 16px; color: #ffffff; }
+        .text { font-size: 14px; color: #a3a3a3; line-height: 1.6; margin-bottom: 30px; }
+        .success-icon { width: 80px; height: 80px; margin: 0 auto 30px; background: rgba(0, 229, 255, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #00e5ff; }
+        .btn { display: inline-block; margin-top: 20px; padding: 14px 28px; background-color: #00e5ff; color: #000000; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 14px; text-transform: uppercase; transition: transform 0.2s; }
+        .footer { font-size: 12px; color: #525252; margin-top: 40px; border-top: 1px solid #262626; padding-top: 20px; }
+        .highlight { color: #00e5ff; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">PUSH<span>SPORT</span></div>
+        <div class="success-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
         </div>
+        <div class="title">¡Cuenta Verificada con Éxito!</div>
+        <div class="text">
+            Hola <span class="highlight">${nombre}</span>,<br><br>
+            Tu cuenta ha sido verificada correctamente. Ya puedes acceder a todas las funciones profesionales de la plataforma Push Sport.
+        </div>
+        <a href="https://push-sports-front.onrender.com/" target="_blank" class="btn">
+            Ingresar al Sistema
+        </a>
+        <div class="text" style="font-size: 12px; margin-top: 25px;">
+            Estamos emocionados de tenerte en el equipo. ¡Bienvenido!
+        </div>
+        <div class="footer">
+            © 2026 Push Sport. Sistema de Gestión Profesional.
+        </div>
+    </div>
+</body>
+</html>
     `;
     return await sendEmail(email, subject, "Cuenta verificada con éxito", html);
 };
