@@ -217,7 +217,12 @@ router.post('/', authMiddleware, async (req, res) => {
 
         if (!inventario) {
             inventario = await prisma.inventarioComercio.create({
-                data: { id_comercio, id_producto, cantidad_actual: 0 }
+                data: { 
+                    id_comercio, 
+                    id_producto, 
+                    cantidad_actual: 0,
+                    comision_pactada_porcentaje: 0
+                }
             });
         }
 
