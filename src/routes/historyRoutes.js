@@ -4,6 +4,7 @@ const prisma = require('../config/prisma');
 
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { notifyCommerceManagers } = require('../services/notificationService');
+const { setAuditUser } = require('../services/auditService');
 
 // ═══════════════════════════════════════════════════════════
 // LISTAR MOVIMIENTOS DE STOCK CON FILTROS AVANZADOS + PAGINACIÓN
@@ -225,7 +226,30 @@ router.post('/', authMiddleware, async (req, res) => {
 
         // 2. Realizar operación en transacción
         const result = await prisma.$transaction(async (tx) => {
-            // Actualizar stock
+            // Si es un ingreso (tipo 1), validar y descontar del stock_central del producto
+            if (parseInt(id_tipo_movimiento) === 1) {
+                const producto = await tx.producto.findUnique({
+                    where: { id_producto },
+                    select: { stock_central: true, nombre: true }
+                });
+
+                const cantidadEnvio = Math.abs(parseInt(cantidad_cambio));
+                
+                if (!producto || producto.stock_central < cantidadEnvio) {
+                    throw new Error(`Stock central insuficiente para "${producto?.nombre || 'producto'}". Disponible: ${producto?.stock_central || 0}, Requerido: ${cantidadEnvio}`);
+                }
+
+                await tx.producto.update({
+                    where: { id_producto },
+                    data: {
+                        stock_central: {
+                            decrement: cantidadEnvio
+                        }
+                    }
+                });
+            }
+
+            // Actualizar stock del comercio
             const updatedInv = await tx.inventarioComercio.update({
                 where: { id_inventario: inventario.id_inventario },
                 data: { cantidad_actual: saldo_posterior }
@@ -246,6 +270,9 @@ router.post('/', authMiddleware, async (req, res) => {
             });
 
             return mov;
+        }, {
+            maxWait: 5000,
+            timeout: 15000
         });
 
         // 3. Notificar a managers
@@ -255,34 +282,12 @@ router.post('/', authMiddleware, async (req, res) => {
             tipo: 'COMMERCE'
         });
 
-        // Si es un ingreso (tipo 1), validar y descontar del stock_central del producto
-        if (parseInt(id_tipo_movimiento) === 1) {
-            const producto = await prisma.producto.findUnique({
-                where: { id_producto },
-                select: { stock_central: true, nombre: true }
-            });
-
-            const cantidadEnvio = Math.abs(parseInt(cantidad_cambio));
-            
-            if (!producto || producto.stock_central < cantidadEnvio) {
-                return res.status(400).json({ 
-                    error: `Stock central insuficiente para "${producto?.nombre || 'producto'}". Disponible: ${producto?.stock_central || 0}, Requerido: ${cantidadEnvio}` 
-                });
-            }
-
-            await prisma.producto.update({
-                where: { id_producto },
-                data: {
-                    stock_central: {
-                        decrement: cantidadEnvio
-                    }
-                }
-            });
-        }
-
         res.status(201).json(result);
     } catch (error) {
-        console.error(error);
+        console.error('Error al registrar movimiento:', error);
+        if (error.message.includes('Stock central insuficiente')) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Error al registrar movimiento de stock' });
     }
 });
@@ -294,8 +299,12 @@ router.post('/', authMiddleware, async (req, res) => {
 // Crear movimiento de stock con desglose por variantes
 router.post('/con-variantes', authMiddleware, async (req, res) => {
     try {
-        const { id_comercio, id_producto, items_variantes, id_tipo_movimiento } = req.body;
+        let { id_comercio, id_producto, items_variantes, id_tipo_movimiento } = req.body;
         const id_usuario = req.user.id_usuario;
+
+        // Convert to correct types for Prisma (id_comercio and id_producto are strings in this schema)
+        id_comercio = String(id_comercio);
+        id_producto = String(id_producto);
 
         // Validar que hay items de variantes
         if (!items_variantes || !Array.isArray(items_variantes) || items_variantes.length === 0) {
@@ -335,7 +344,48 @@ router.post('/con-variantes', authMiddleware, async (req, res) => {
 
         // 2. Realizar operación en transacción
         const result = await prisma.$transaction(async (tx) => {
-            // Actualizar stock total del producto
+            // Establecer usuario para auditoría y evitar consultas redundantes
+            setAuditUser(id_usuario);
+
+            // Si es un ingreso (tipo 1), validar y descontar del stock_central de cada variante y del producto
+            if (parseInt(id_tipo_movimiento) === 1) {
+                // ... (mantenemos la lógica de validación de stock central igual)
+                for (const item of items_variantes) {
+                    const { id_variante, cantidad } = item;
+                    const cantidadNum = Math.abs(parseInt(cantidad));
+
+                    const variante = await tx.productoVariante.findUnique({
+                        where: { id_variante },
+                        select: { stock_central: true, sku_variante: true }
+                    });
+
+                    if (!variante || variante.stock_central < cantidadNum) {
+                        throw new Error(`Stock central insuficiente para variante "${variante?.sku_variante || id_variante}". Disponible: ${variante?.stock_central || 0}, Requerido: ${cantidadNum}`);
+                    }
+
+                    await tx.productoVariante.update({
+                        where: { id_variante },
+                        data: { stock_central: { decrement: cantidadNum } }
+                    });
+                }
+
+                // También descontar del stock_central general del producto
+                const prodData = await tx.producto.findUnique({
+                    where: { id_producto },
+                    select: { stock_central: true, nombre: true }
+                });
+
+                if (!prodData || prodData.stock_central < cantidad_total) {
+                    throw new Error(`Stock central insuficiente para producto "${prodData?.nombre || id_producto}". Disponible: ${prodData?.stock_central || 0}, Requerido: ${cantidad_total}`);
+                }
+
+                await tx.producto.update({
+                    where: { id_producto },
+                    data: { stock_central: { decrement: cantidad_total } }
+                });
+            }
+
+            // Actualizar stock total del producto en el comercio
             const updatedInv = await tx.inventarioComercio.update({
                 where: { id_inventario: inventario.id_inventario },
                 data: { cantidad_actual: saldo_posterior }
@@ -356,21 +406,23 @@ router.post('/con-variantes', authMiddleware, async (req, res) => {
                 include: { producto: true, comercio: true, tipo_movimiento: true }
             });
 
+            // OPTIMIZACIÓN: Buscar todos los inventarios de variantes de una vez
+            const idsVariantes = items_variantes.map(i => i.id_variante);
+            const inventariosExistentes = await tx.inventarioComercioVariante.findMany({
+                where: {
+                    id_inventario: inventario.id_inventario,
+                    id_variante: { in: idsVariantes }
+                }
+            });
+
             // Procesar cada variante
             const variantesProcesadas = [];
             for (const item of items_variantes) {
                 const { id_variante, cantidad } = item;
                 const cantidadNum = parseInt(cantidad);
 
-                // Buscar inventario de variante usando el ID compuesto único
-                let invVariante = await tx.inventarioComercioVariante.findUnique({
-                    where: {
-                        id_inventario_id_variante: {
-                            id_inventario: inventario.id_inventario,
-                            id_variante: id_variante
-                        }
-                    }
-                });
+                // Buscar en lo que ya trajimos de la DB
+                let invVariante = inventariosExistentes.find(inv => inv.id_variante === id_variante);
 
                 // Si no existe, crearlo
                 if (!invVariante) {
@@ -404,79 +456,50 @@ router.post('/con-variantes', authMiddleware, async (req, res) => {
                     }
                 });
 
-                // Obtener datos de la variante para la respuesta
-                const varianteData = await tx.productoVariante.findUnique({
-                    where: { id_variante: id_variante },
-                    select: {
-                        id_variante: true,
-                        sku_variante: true,
-                        atributos_valores: true
-                    }
-                });
-
-                variantesProcesadas.push({
-                    ...movVariante,
-                    variante: varianteData
-                });
+                variantesProcesadas.push(movVariante);
             }
 
-            return { movimiento: mov, variantes: variantesProcesadas };
+            return { movimiento: mov, movimientosVariantes: variantesProcesadas };
         }, {
-            maxWait: 20000,
-            timeout: 30000
+            maxWait: 30000,
+            timeout: 60000
         });
 
-        // 3. Notificar a managers
-        const producto = await prisma.producto.findUnique({
-            where: { id_producto },
-            select: { nombre: true }
+        // 3. Obtener detalles de variantes fuera de la transacción para optimizar
+        const idsVariantes = result.movimientosVariantes.map(m => m.id_variante);
+        const variantesInfo = await prisma.productoVariante.findMany({
+            where: { id_variante: { in: idsVariantes } },
+            select: {
+                id_variante: true,
+                sku_variante: true,
+                atributos_valores: true
+            }
         });
 
-        const tipoMov = await prisma.tipoMovimiento.findUnique({
-            where: { id_tipo_movimiento: parseInt(id_tipo_movimiento) }
-        });
+        const variantesFinales = result.movimientosVariantes.map(movVar => ({
+            ...movVar,
+            variante: variantesInfo.find(v => v.id_variante === movVar.id_variante)
+        }));
 
+        // 4. Notificar a managers
         await notifyCommerceManagers(id_comercio, {
             titulo: 'Actualización de Stock con Variantes',
-            mensaje: `Movimiento de ${cantidad_total} unidades (${items_variantes.length} variantes) registrado para "${producto?.nombre}" (${tipoMov?.nombre_movimiento}).`,
+            mensaje: `Movimiento de ${cantidad_total} unidades (${items_variantes.length} variantes) registrado para "${result.movimiento.producto?.nombre}" (${result.movimiento.tipo_movimiento?.nombre_movimiento}).`,
             tipo: 'COMMERCE'
         });
-
-        // 4. Si es ingreso (tipo 1), descontar del stock_central de cada variante
-        if (parseInt(id_tipo_movimiento) === 1) {
-            for (const item of items_variantes) {
-                const { id_variante, cantidad } = item;
-                const cantidadNum = Math.abs(parseInt(cantidad));
-
-                const variante = await prisma.productoVariante.findUnique({
-                    where: { id_variante },
-                    select: { stock_central: true, sku_variante: true }
-                });
-
-                if (variante && variante.stock_central >= cantidadNum) {
-                    await prisma.productoVariante.update({
-                        where: { id_variante },
-                        data: { stock_central: { decrement: cantidadNum } }
-                    });
-                }
-            }
-
-            // También descontar del stock_central general del producto
-            await prisma.producto.update({
-                where: { id_producto },
-                data: { stock_central: { decrement: cantidad_total } }
-            });
-        }
 
         res.status(201).json({
             message: 'Movimiento registrado correctamente',
             movimiento: result.movimiento,
-            variantes: result.variantes,
+            variantes: variantesFinales,
             cantidad_total,
             cantidad_variantes: items_variantes.length
         });
     } catch (error) {
         console.error('Error en movimiento con variantes:', error);
+        if (error.message.includes('Stock central insuficiente')) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ 
             error: 'Error al registrar movimiento de stock con variantes',
             details: error.message 

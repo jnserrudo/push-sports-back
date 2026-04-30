@@ -52,14 +52,11 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                   return res.status(404).json({ error: `Producto ${id_producto} no disponible.` });
              }
 
-             // Si el producto usa variantes, validar stock de la variante
-             if (producto.usa_variantes) {
-                 if (!id_variante) {
-                     return res.status(400).json({ 
-                         error: `El producto "${producto.nombre}" requiere especificar una variante.` 
-                     });
-                 }
+             // Determinar si esta línea usa variante (por producto O por id_variante enviado desde el POS)
+             const usaVariante = producto.usa_variantes || !!id_variante;
 
+             // Si usa variante, validar stock de la variante
+             if (usaVariante && id_variante) {
                  const inventarioVariante = await prisma.inventarioComercioVariante.findFirst({
                      where: { 
                          variante: { id_variante },
@@ -77,6 +74,10 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                          error: `Stock insuficiente para ${producto.nombre} - ${nombreVariante}. Disponible: ${stockDisponible}` 
                      });
                  }
+             } else if (usaVariante && !id_variante) {
+                 return res.status(400).json({ 
+                     error: `El producto "${producto.nombre}" requiere especificar una variante.` 
+                 });
              } else {
                  // Producto sin variantes - comportamiento original
                  const inventario = await prisma.inventarioComercio.findUnique({
@@ -110,8 +111,8 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                  precio_unitario_cobrado: precio_unitario,
                  precio_pushsport_historico: pPushsport,
                  costo_unitario_historico,
-                 _neto: neto,
-                 usa_variantes: producto.usa_variantes
+                  _neto: neto,
+                 usa_variantes: usaVariante
              });
         }
 
@@ -143,7 +144,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              });
 
              // Si hay variantes, crear los registros de VentaDetalleVariante
-             const detallesConVariantes = detallesProcesados.filter(d => d.usa_variantes && d.id_variante);
+             const detallesConVariantes = detallesProcesados.filter(d => d.id_variante);
              if (detallesConVariantes.length > 0) {
                  // Obtener los IDs de los detalles recién creados
                  const detallesCreados = await tx.ventaDetalle.findMany({
@@ -171,38 +172,49 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              let totalNeto = 0;
              for (const det of detallesProcesados) {
                  if (det.usa_variantes && det.id_variante) {
-                     // Actualizar stock de variante
+                     // Actualizar stock de variante y global
                      const inventarioVariante = await tx.inventarioComercioVariante.findFirst({
                          where: { 
                              variante: { id_variante: det.id_variante },
                              inventario_padre: { id_comercio }
                          }
                      });
+                     
+                     const inventarioGlobal = await tx.inventarioComercio.findUnique({
+                         where: { id_comercio_id_producto: { id_comercio, id_producto: det.id_producto } }
+                     });
 
-                     if (inventarioVariante) {
+                     if (inventarioVariante && inventarioGlobal) {
+                         // Decrementar variante
                          await tx.inventarioComercioVariante.update({
                              where: { id_inventario_var: inventarioVariante.id_inventario_var },
-                             data: {
-                                 cantidad_actual: { decrement: det.cantidad }
-                             }
+                             data: { cantidad_actual: { decrement: det.cantidad } }
+                         });
+                         
+                         // Decrementar global
+                         await tx.inventarioComercio.update({
+                             where: { id_inventario: inventarioGlobal.id_inventario },
+                             data: { cantidad_actual: { decrement: det.cantidad } }
                          });
 
-                         // Registrar movimiento de variante
+                         // Registrar movimiento global y de variante
+                         const nuevoMov = await tx.movimientoStock.create({
+                             data: {
+                                 id_producto: det.id_producto,
+                                 id_comercio,
+                                 id_usuario,
+                                 id_tipo_movimiento: 2,
+                                 cantidad_cambio: -det.cantidad,
+                                 saldo_anterior: inventarioGlobal.cantidad_actual,
+                                 saldo_posterior: inventarioGlobal.cantidad_actual - det.cantidad,
+                                 tiene_desglose_variantes: true
+                             },
+                             select: { id_movimiento: true }
+                         });
+
                          await tx.movimientoStockVariante.create({
                              data: {
-                                 id_movimiento: (await tx.movimientoStock.create({
-                                     data: {
-                                         id_producto: det.id_producto,
-                                         id_comercio,
-                                         id_usuario,
-                                         id_tipo_movimiento: 2,
-                                         cantidad_cambio: -det.cantidad,
-                                         saldo_anterior: inventarioVariante.cantidad_actual,
-                                         saldo_posterior: inventarioVariante.cantidad_actual - det.cantidad,
-                                         tiene_desglose_variantes: true
-                                     },
-                                     select: { id_movimiento: true }
-                                 })).id_movimiento,
+                                 id_movimiento: nuevoMov.id_movimiento,
                                  id_variante: det.id_variante,
                                  cantidad_cambio: -det.cantidad,
                                  saldo_anterior: inventarioVariante.cantidad_actual,
@@ -235,6 +247,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
              });
 
              return { ventaCabecera: nuevaVenta, detallesCount: detallesProcesados.length };
+        }, {
+            maxWait: 15000,
+            timeout: 30000
         });
 
         // 4. Notificar al manager

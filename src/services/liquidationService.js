@@ -13,7 +13,16 @@ const liquidationService = {
         id_liquidacion: null,
       },
       include: {
-        detalles: true,
+        detalles: {
+            include: {
+                producto: { select: { nombre: true, usa_variantes: true } },
+                variantes: {
+                    include: {
+                        variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
+                    }
+                }
+            }
+        },
         usuario: { select: { nombre: true, apellido: true } }
       },
       orderBy: { fecha_hora: 'asc' }
@@ -57,6 +66,41 @@ const liquidationService = {
       }
     }
 
+    // 2.5 Generar desglose de productos
+    const desgloseMap = {};
+    for (const venta of ventasPendientes) {
+      for (const detalle of venta.detalles) {
+        let nombre = detalle.producto?.nombre || 'Producto Desconocido';
+        
+        // Agregar info de variante — verificar datos reales en lugar del flag
+        if (detalle.variantes && detalle.variantes.length > 0) {
+          const varRel = detalle.variantes[0];
+          const varDef = varRel.variante;
+          
+          if (varDef) {
+             let atributos = varDef.atributos_valores || {};
+             if (typeof atributos === 'string') {
+               try { atributos = JSON.parse(atributos); } catch(e) { atributos = {}; }
+             }
+             
+             // Crear string descriptivo: "Atributo1: Valor1 | Atributo2: Valor2"
+             const partes = Object.entries(atributos).map(([key, val]) => `${key}: ${val}`);
+             const descVariante = partes.length > 0 ? partes.join(' | ') : (varDef.sku_variante || 'Variante');
+             
+             nombre = `${nombre} (${descVariante})`;
+          }
+        }
+
+        if (!desgloseMap[nombre]) {
+          desgloseMap[nombre] = { nombre, cantidad: 0, total_bruto: 0, total_neto: 0 };
+        }
+        desgloseMap[nombre].cantidad += detalle.cantidad;
+        desgloseMap[nombre].total_bruto += parseFloat(detalle.precio_unitario_cobrado) * detalle.cantidad;
+        desgloseMap[nombre].total_neto += parseFloat(detalle.precio_pushsport_historico) * detalle.cantidad;
+      }
+    }
+    const resumenProductos = Object.values(desgloseMap).sort((a, b) => b.total_bruto - a.total_bruto);
+
     // 3. Devoluciones de ventas pendientes (no liquidadas)
     const ventasIds = ventasPendientes.map(v => v.id_venta);
     const devoluciones = await prisma.devolucion.findMany({
@@ -96,6 +140,7 @@ const liquidationService = {
       cantDevoluciones: devoluciones.length,
       netoFinal: Number(comercio?.saldo_acumulado_mili || 0),
       desgloseMetodoPago,
+      resumenProductos,
       rangoFechas: {
         desde: fechaDesde,
         hasta: fechaHasta
@@ -115,7 +160,13 @@ const liquidationService = {
    * Genera una liquidación para un comercio agrupando todas las ventas no liquidadas.
    * Ahora acepta monto_recibido opcional para registrar diferencias.
    */
-  async generateLiquidation({ id_comercio, monto_recibido, observacion }) {
+  async generateLiquidation({ id_comercio, monto_recibido, observacion, id_usuario }) {
+    // Prevenir timeouts largos y optimizar la auditoría fijando el usuario
+    if (id_usuario) {
+      const { setAuditUser } = require('./auditService');
+      setAuditUser(id_usuario);
+    }
+
     return await prisma.$transaction(async (tx) => {
       // 1. Buscar todas las ventas cabecera no liquidadas de este comercio
       const ventasPendientes = await tx.ventaCabecera.findMany({
@@ -124,7 +175,16 @@ const liquidationService = {
           id_liquidacion: null,
         },
         include: {
-          detalles: true
+          detalles: {
+              include: {
+                  producto: { select: { nombre: true, usa_variantes: true } },
+                  variantes: {
+                      include: {
+                          variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
+                      }
+                  }
+              }
+          }
         }
       });
 
@@ -148,6 +208,39 @@ const liquidationService = {
         }
       }
 
+      // 2.5 Generar desglose de productos para la metadata
+      const desgloseMap = {};
+      for (const venta of ventasPendientes) {
+        for (const detalle of venta.detalles) {
+          let nombre = detalle.producto?.nombre || 'Producto Desconocido';
+          
+          if (detalle.variantes && detalle.variantes.length > 0) {
+            const varRel = detalle.variantes[0];
+            const varDef = varRel.variante;
+            
+            if (varDef) {
+               let atributos = varDef.atributos_valores || {};
+               if (typeof atributos === 'string') {
+                 try { atributos = JSON.parse(atributos); } catch(e) { atributos = {}; }
+               }
+               
+               const partes = Object.entries(atributos).map(([key, val]) => `${key}: ${val}`);
+               const descVariante = partes.length > 0 ? partes.join(' | ') : (varDef.sku_variante || 'Variante');
+               
+               nombre = `${nombre} (${descVariante})`;
+            }
+          }
+
+          if (!desgloseMap[nombre]) {
+            desgloseMap[nombre] = { nombre, cantidad: 0, total_bruto: 0, total_neto: 0 };
+          }
+          desgloseMap[nombre].cantidad += detalle.cantidad;
+          desgloseMap[nombre].total_bruto += parseFloat(detalle.precio_unitario_cobrado) * detalle.cantidad;
+          desgloseMap[nombre].total_neto += parseFloat(detalle.precio_pushsport_historico) * detalle.cantidad;
+        }
+      }
+      const resumenProductos = Object.values(desgloseMap).sort((a, b) => b.total_bruto - a.total_bruto);
+
       // 3. Obtener saldo real del comercio (ya tiene devoluciones descontadas en tiempo real)
       const comercio = await tx.comercio.findUnique({
         where: { id_comercio },
@@ -167,6 +260,7 @@ const liquidationService = {
         cant_ventas: ventasPendientes.length,
         total_bruto: Math.round(totalVentasBruto * 100) / 100,
         desglose_metodo_pago: desgloseMetodoPago,
+        resumen_productos: resumenProductos,
         saldo_al_cerrar: saldoReal,
         monto_recibido_manual: monto_recibido !== undefined && monto_recibido !== null
       };
@@ -203,7 +297,7 @@ const liquidationService = {
         ...liquidacion,
         _metadata: metadata
       };
-    });
+    }, { timeout: 60000 });
   },
 
   /**
@@ -252,6 +346,7 @@ const liquidationService = {
         cant_ventas: liq.ventas.length,
         total_bruto: metadata.total_bruto || liq.ventas.reduce((a, v) => a + Number(v.total_venta), 0),
         desglose_metodo_pago: metadata.desglose_metodo_pago || {},
+        resumen_productos: metadata.resumen_productos || [],
         ventas: liq.ventas
       };
     });

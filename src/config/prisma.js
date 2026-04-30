@@ -12,7 +12,7 @@ const globalForPrisma = global;
 // Crear PrismaClient con extensión de auditoría
 const createPrismaClient = () => {
     const client = new PrismaClient({
-        log: ['query', 'info', 'warn', 'error'],
+        log: ['warn', 'error'],
     });
     
     // Aplicar extensión de auditoría

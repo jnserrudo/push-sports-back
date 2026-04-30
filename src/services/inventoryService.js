@@ -66,7 +66,10 @@ const inventoryService = {
     if (txParams) {
         return await runInTransaction(txParams);
     } else {
-        return await prisma.$transaction(runInTransaction);
+        return await prisma.$transaction(runInTransaction, {
+            maxWait: 5000,
+            timeout: 15000
+        });
     }
   },
 

@@ -235,11 +235,28 @@ const auditExtension = Prisma.defineExtension((client) => {
                     
                     if (AUDITABLE_MODELS.includes(model) && monitoredOps.includes(operation)) {
                         
-                        // Capturar datos ANTERIORES para updates y deletes
+                        // Obtener usuario del contexto de la solicitud
+                        const store = auditContext.getStore() || {};
+                        const currentUserId = store.userId || null;
+                        
+                        // Si no hay usuario válido, ejecutar la query sin auditar
+                        // (no podemos crear un registro de auditoría sin FK válida)
+                        if (!currentUserId || currentUserId === "00000000-0000-0000-0000-000000000000") {
+                            return query(args);
+                        }
+                        
+                        // Capturar datos previos solo para update/delete de entidades principales
                         let datosAnteriores = null;
                         let registroPrevio = null;
                         
-                        if ((operation === 'update' || operation === 'delete') && args.where) {
+                        // Para entidades hijas de alto volumen, NO hacer findUnique previo (performance)
+                        const SKIP_PREFETCH = [
+                            'VentaDetalle', 'VentaDetalleVariante',
+                            'MovimientoStockVariante', 'InventarioComercioVariante'
+                        ];
+                        
+                        if ((operation === 'update' || operation === 'delete') && args.where && 
+                            !SKIP_PREFETCH.includes(model)) {
                             try {
                                 registroPrevio = await client[model].findUnique({ 
                                     where: args.where 
@@ -248,93 +265,66 @@ const auditExtension = Prisma.defineExtension((client) => {
                                     datosAnteriores = registroPrevio;
                                 }
                             } catch (e) {
-                                console.warn(`No se pudo capturar datos anteriores para ${model}:`, e.message);
+                                // Silenciar
                             }
                         }
                         
-                        // Ejecutamos la operacion solicitada
+                        // Ejecutar la operación solicitada
                         const result = await query(args);
-                        
-                        // Obtener el contexto completo de la solicitud
-                        const store = auditContext.getStore() || {};
-                        let currentUserId = store.userId || "00000000-0000-0000-0000-000000000000";
-                        
-                        // Si no hay usuario, intentar obtener el primer usuario activo
-                        if (!currentUserId || currentUserId === "00000000-0000-0000-0000-000000000000") {
-                            try {
-                                const firstUser = await client.usuario.findFirst({ 
-                                    where: { activo: true },
-                                    select: { id_usuario: true }
-                                });
-                                if (firstUser) currentUserId = firstUser.id_usuario;
-                            } catch (e) {
-                                // Ignorar error
-                            }
-                        }
                         
                         // Extraer ID de la entidad afectada
                         const idField = ENTITY_ID_FIELDS[model];
                         const idEntidadAfectada = result?.[idField] || registroPrevio?.[idField] || null;
                         
-                        // Calcular diferencias para TODAS las operaciones
+                        // Calcular diferencias (skip para entidades hijas de alto volumen)
                         let cambiosDetectados = null;
-                        if (operation === 'update' && datosAnteriores && result) {
-                            cambiosDetectados = calcularDiferencias(datosAnteriores, result);
-                        } else if (operation === 'create' && result) {
-                            cambiosDetectados = calcularDiferencias(null, result);
-                        } else if (operation === 'delete' && registroPrevio) {
-                            cambiosDetectados = calcularDiferencias(registroPrevio, null);
+                        if (!SKIP_PREFETCH.includes(model)) {
+                            if (operation === 'update' && datosAnteriores && result) {
+                                cambiosDetectados = calcularDiferencias(datosAnteriores, result);
+                            } else if (operation === 'create' && result) {
+                                cambiosDetectados = calcularDiferencias(null, result);
+                            } else if (operation === 'delete' && registroPrevio) {
+                                cambiosDetectados = calcularDiferencias(registroPrevio, null);
+                            }
                         }
                         
                         // Generar descripción legible
                         const descripcionAccion = generarDescripcion(
-                            model, 
-                            operation, 
-                            cambiosDetectados, 
-                            result || registroPrevio
+                            model, operation, cambiosDetectados, result || registroPrevio
                         );
                         
-                        // Extraer IDs relacionados (con resolución de padres)
-                        const idsRelacionados = await extraerIdsRelacionados(
-                            client,
-                            model, 
-                            result || registroPrevio
-                        );
+                        // Extraer IDs directamente del resultado (sin queries adicionales)
+                        const idsRelacionados = {};
+                        const dataRef = result || registroPrevio || {};
+                        if (dataRef.id_producto) idsRelacionados.id_producto = dataRef.id_producto;
+                        if (dataRef.id_comercio) idsRelacionados.id_comercio = dataRef.id_comercio;
+                        if (dataRef.id_variante) idsRelacionados.id_variante = dataRef.id_variante;
+                        if (dataRef.id_venta) idsRelacionados.id_venta = dataRef.id_venta;
+                        if (dataRef.id_proveedor) idsRelacionados.id_proveedor = dataRef.id_proveedor;
                         
-                        // Preparar datos de auditoría COMPLETOS
+                        // Preparar datos de auditoría
                         const auditoriaData = {
-                            // Usuario
                             id_usuario: currentUserId,
-                            
-                            // Entidad afectada
                             entidad_afectada: model,
                             id_entidad_afectada: idEntidadAfectada,
-                            
-                            // Acción
                             accion: operation.toUpperCase(),
                             descripcion_accion: descripcionAccion,
-                            
-                            // Datos completos (legacy + nuevos)
                             valor_anterior: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 10000) : null,
                             valor_nuevo: !['delete', 'deleteMany'].includes(operation) && result ? JSON.stringify(result).substring(0, 10000) : null,
                             datos_anteriores: datosAnteriores ? JSON.stringify(datosAnteriores).substring(0, 20000) : null,
                             datos_nuevos: !['delete', 'deleteMany'].includes(operation) && (result || args.data) ? JSON.stringify(result || args.data).substring(0, 20000) : null,
                             cambios_detectados: cambiosDetectados ? JSON.stringify(cambiosDetectados).substring(0, 10000) : null,
-                            
-                            // Contexto de la operación
                             endpoint: store.endpoint || null,
                             metodo_http: store.metodo_http || null,
                             ip_usuario: store.ip_usuario || null,
                             user_agent: store.user_agent || null,
-                            
-                            // IDs relacionados para filtrado
                             ...idsRelacionados
                         };
 
-                        // Registro asíncrono (no bloqueante)
+                        // Registro asíncrono (no bloqueante, silencioso)
                         client.auditoriaSistema.create({ 
                             data: auditoriaData 
-                        }).catch(e => console.error("Error auditing:", e.message));
+                        }).catch(() => {});
 
                         // Notificar eliminaciones críticas
                         if (operation === 'delete' && 

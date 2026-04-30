@@ -32,7 +32,8 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const liquidacion = await liquidationService.generateLiquidation({
             id_comercio,
             monto_recibido,
-            observacion
+            observacion,
+            id_usuario: req.user.id_usuario
         });
 
         res.status(201).json({ message: 'Liquidación generada', data: liquidacion });
