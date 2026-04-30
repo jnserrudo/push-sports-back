@@ -93,7 +93,14 @@ router.post('/register', async (req, res) => {
         const existingUser = await prisma.usuario.findFirst({
             where: { OR: [{ email }, { username: finalUsername }] }
         });
+        
         if (existingUser) {
+            if (!existingUser.activo) {
+                return res.status(400).json({ 
+                    error: 'Tu cuenta ha sido desactivada por administración. Por favor, comunícate con soporte.',
+                    isInactive: true 
+                });
+            }
             return res.status(400).json({ error: 'El usuario o email ya existe' });
         }
 
@@ -339,7 +346,7 @@ router.post('/forgot-password', async (req, res) => {
         }
 
         const usuario = await prisma.usuario.findFirst({
-            where: { email, activo: true }
+            where: { email, activo: true } // SOLO usuarios activos pueden solicitar reset
         });
         
         if (!usuario) {
@@ -395,7 +402,9 @@ router.post('/reset-password', async (req, res) => {
         await prisma.$transaction([
             prisma.usuario.update({
                 where: { id_usuario: resetToken.id_usuario },
-                data: { password_hash }
+                data: { 
+                    password_hash
+                }
             }),
             prisma.passwordResetToken.delete({
                 where: { id: resetToken.id }

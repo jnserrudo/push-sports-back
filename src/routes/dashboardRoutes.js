@@ -7,10 +7,11 @@ router.get('/stats', authMiddleware, async (req, res) => {
     try {
         const { sucursalId } = req.query;
         const isSuperAdmin = req.user.id_rol === 1;
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
 
-        // Si es Admin de Sucursal y no es SuperAdmin, forzamos sucursalId
+        // Si es Admin de Sucursal y no es global, forzamos sucursalId
         // Si sucursalId es 'ALL', lo tratamos como null para traer datos globales
-        const targetSucursalId = (isSuperAdmin && sucursalId !== 'ALL') ? sucursalId : (isSuperAdmin ? null : req.user.id_comercio_asignado);
+        const targetSucursalId = ((isSuperAdmin || isGlobalSupervisor) && sucursalId !== 'ALL') ? sucursalId : ((isSuperAdmin || isGlobalSupervisor) ? null : req.user.id_comercio_asignado);
 
         // 1. Métricas Principales (Counts & Sums)
         const [totalCaja, productosCount, usuariosCount] = await Promise.all([
@@ -72,9 +73,9 @@ router.get('/stats', authMiddleware, async (req, res) => {
             }
         });
 
-        // 4. Sucursales con mayor deuda (Solo para SuperAdmin) - INCLUYENDO ID para React Key
+        // 4. Sucursales con mayor deuda (Solo para SuperAdmin o Global Supervisor) - INCLUYENDO ID para React Key
         let sucursalesDeuda = [];
-        if (isSuperAdmin) {
+        if (isSuperAdmin || isGlobalSupervisor) {
             sucursalesDeuda = await prisma.comercio.findMany({
                 where: { activo: true },
                 orderBy: { saldo_acumulado_mili: 'desc' },

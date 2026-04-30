@@ -15,11 +15,11 @@ const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddlewar
 //   3. Ingresa el stock de vuelta al INVENTARIO_COMERCIO (suma la cantidad).
 //   4. Crea un movimiento en el Kardex (MOVIMIENTOS_STOCK) de tipo 5 = 
 //      "Devolución Cliente (Ingreso)" con factor_multiplicador +1.
+//   5. Descuenta el neto (precio_pushsport_historico * cantidad) del 
+//      saldo_acumulado_mili del comercio en tiempo real.
 //
-// NOTA: La devolución NO modifica el campo `saldo_acumulado_mili` de COMERCIOS
-// porque ese campo es gestionado exclusivamente por el módulo de Liquidaciones.
-// El control financiero de devoluciones queda registrado en DEVOLUCIONES para
-// que el administrador lo tome en cuenta al hacer la liquidación.
+// El descuento del saldo se hace por el NETO (precio PushSport), no por el 
+// precio cobrado al cliente, porque saldo_acumulado_mili solo acumula netos.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => {
     try {
@@ -54,8 +54,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
             });
         }
 
-        // Roles 2 y 3 solo pueden operar en su propio comercio
-        if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== venta.id_comercio) {
+        // Roles 2 y 3 solo pueden operar en su propio comercio, salvo supervisor global
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (req.user.id_rol !== 1 && !isGlobalSupervisor && req.user.id_comercio_asignado !== venta.id_comercio) {
             return res.status(403).json({
                 error: 'No tienes permiso para gestionar devoluciones de este comercio.'
             });
@@ -113,6 +114,24 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                 cantidad_cambio: cantidadInt
             }, tx);
 
+            // 4c. Descontar el neto (precio PushSport) del saldo acumulado del comercio
+            //     saldo_acumulado_mili solo acumula netos (precio_pushsport * cantidad),
+            //     por lo tanto restamos el mismo concepto.
+            const netoDevuelto = parseFloat(detalle.precio_pushsport_historico) * cantidadInt;
+            if (netoDevuelto > 0) {
+                const comercioActual = await tx.comercio.findUnique({
+                    where: { id_comercio },
+                    select: { saldo_acumulado_mili: true }
+                });
+                const saldoActual = Number(comercioActual?.saldo_acumulado_mili || 0);
+                const nuevoSaldo = Math.max(0, saldoActual - netoDevuelto);
+
+                await tx.comercio.update({
+                    where: { id_comercio },
+                    data: { saldo_acumulado_mili: nuevoSaldo }
+                });
+            }
+
             return devolucion;
         });
 
@@ -136,7 +155,8 @@ router.get('/comercio/:id_comercio', authMiddleware, async (req, res) => {
     try {
         const { id_comercio } = req.params;
 
-        if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== id_comercio) {
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (req.user.id_rol !== 1 && !isGlobalSupervisor && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'Acceso denegado.' });
         }
 

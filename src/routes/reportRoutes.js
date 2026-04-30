@@ -12,7 +12,8 @@ router.post('/send-weekly', authMiddleware, roleMiddleware([1, 2]), async (req, 
     try {
         const { sucursalId } = req.body;
         const isSuperAdmin = req.user.id_rol === 1;
-        const targetSucursalId = isSuperAdmin ? (sucursalId || null) : req.user.id_comercio_asignado;
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        const targetSucursalId = (isSuperAdmin || isGlobalSupervisor) ? (sucursalId || null) : req.user.id_comercio_asignado;
 
         // 1. Obtener rango de fechas (últimos 7 días)
         const sieteDiasAtras = new Date();

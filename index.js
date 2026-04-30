@@ -56,6 +56,7 @@ const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const eventRoutes = require('./src/routes/eventRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
+const rectificationRoutes = require('./src/routes/rectificationRoutes');
 
 // Rutas Públicas (B2C) — SIN autenticación JWT
 app.use('/api/public', publicRoutes);
@@ -83,6 +84,7 @@ app.use('/api/variantes', productVariantRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reportes', reportRoutes);
 app.use('/api/eventos', eventRoutes);
+app.use('/api/rectificaciones', rectificationRoutes);
 
 // Configuración de Swagger
 const fs = require('fs');

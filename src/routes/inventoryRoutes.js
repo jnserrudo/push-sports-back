@@ -51,7 +51,8 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
         }
 
         // Filtro de seguridad por rol
-        if ((req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (!isGlobalSupervisor && (req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'No tienes permiso para ver el inventario de otro comercio' });
         }
 
@@ -127,7 +128,7 @@ router.put('/:id_inventario', authMiddleware, roleMiddleware([1, 2]), async (req
         const { stock_minimo_alerta, comision_pactada_porcentaje, cantidad_actual } = req.body;
 
         // Verificar pertenencia si es Supervisor
-        if (req.user.id_rol === 2) {
+        if (req.user.id_rol === 2 && req.user.id_comercio_asignado) {
             const inv = await prisma.inventarioComercio.findUnique({ where: { id_inventario } });
             if (inv.id_comercio !== req.user.id_comercio_asignado) {
                 return res.status(403).json({ error: 'Solo puedes editar inventario de tu propio comercio' });
@@ -209,7 +210,8 @@ router.get('/:id_comercio/variantes/:id_variante', authMiddleware, async (req, r
         const { id_comercio, id_variante } = req.params;
 
         // Filtro de seguridad por rol
-        if ((req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (!isGlobalSupervisor && (req.user.id_rol === 2 || req.user.id_rol === 3) && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'No tienes permiso para ver este inventario' });
         }
 
@@ -273,7 +275,7 @@ router.put('/:id_comercio/variantes/:id_variante', authMiddleware, roleMiddlewar
         const { cantidad_actual, stock_minimo_alerta } = req.body;
 
         // Verificar pertenencia si es Supervisor
-        if (req.user.id_rol === 2 && req.user.id_comercio_asignado !== id_comercio) {
+        if (req.user.id_rol === 2 && req.user.id_comercio_asignado && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'Solo puedes editar inventario de tu propio comercio' });
         }
 

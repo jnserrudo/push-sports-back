@@ -19,7 +19,7 @@ model Usuario {
   id_comercio_asignado String?   @db.Uuid
   activo               Boolean   @default(true)
   
-  // Campos de verificación por email
+  // Campos de verificaciÃ³n por email
   email_verificado     Boolean   @default(false)
   otp_code             String?
   otp_expira_en        DateTime?
@@ -200,11 +200,17 @@ model MovimientoStock {
   tiene_desglose_variantes Boolean @default(false)
   fecha_hora         DateTime @default(now())
 
+  // Campos de rectificaciÃ³n
+  id_movimiento_origen  String?  @db.Uuid
+  motivo_rectificacion  String?  @db.Text
+
   producto           Producto @relation(fields: [id_producto], references: [id_producto])
   comercio           Comercio @relation(fields: [id_comercio], references: [id_comercio])
   usuario            Usuario  @relation(fields: [id_usuario], references: [id_usuario])
   tipo_movimiento    TipoMovimiento @relation(fields: [id_tipo_movimiento], references: [id_tipo_movimiento])
   variantes          MovimientoStockVariante[]
+  movimiento_origen     MovimientoStock?  @relation("RectMovimiento", fields: [id_movimiento_origen], references: [id_movimiento])
+  rectificaciones_mov   MovimientoStock[] @relation("RectMovimiento")
 
   @@map("MOVIMIENTOS_STOCK")
 }
@@ -218,11 +224,18 @@ model VentaCabecera {
   metodo_pago      String
   fecha_hora       DateTime @default(now())
 
+  // Campos de rectificaciÃ³n
+  tipo_venta            String   @default("VENTA")  // VENTA | ANULACION | RECTIFICACION
+  id_venta_origen       String?  @db.Uuid
+  motivo_rectificacion  String?  @db.Text
+
   comercio         Comercio     @relation(fields: [id_comercio], references: [id_comercio])
   usuario          Usuario      @relation(fields: [id_usuario], references: [id_usuario])
   liquidacion      Liquidacion? @relation(fields: [id_liquidacion], references: [id_liquidacion])
   detalles         VentaDetalle[]
   devoluciones     Devolucion[]
+  venta_origen     VentaCabecera?  @relation("RectificacionOrigen", fields: [id_venta_origen], references: [id_venta])
+  rectificaciones  VentaCabecera[] @relation("RectificacionOrigen")
 
   @@map("VENTAS_CABECERA")
 }
@@ -268,9 +281,9 @@ model AuditoriaSistema {
   entidad_afectada    String   // 'Producto', 'Venta', 'Usuario', etc.
   id_entidad_afectada String?  @db.Uuid  // ID del registro afectado para filtrado
   
-  // Acción detallada
+  // AcciÃ³n detallada
   accion              String   // 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', etc.
-  descripcion_accion  String?  @db.Text  // Descripción legible de la acción
+  descripcion_accion  String?  @db.Text  // DescripciÃ³n legible de la acciÃ³n
   
   // Datos JSON completos
   valor_anterior      String?  @db.Text  // @deprecated - usar datos_anteriores
@@ -279,7 +292,7 @@ model AuditoriaSistema {
   datos_nuevos        String?  @db.Text  // JSON del estado nuevo completo
   cambios_detectados  String?  @db.Text  // JSON solo con campos cambiados {campo: {antes, despues}}
   
-  // Contexto de la operación
+  // Contexto de la operaciÃ³n
   endpoint            String?  // /api/productos/123
   metodo_http         String?  // PUT, POST, DELETE
   ip_usuario          String?  // 192.168.1.100
@@ -374,21 +387,21 @@ model PasswordResetToken {
   @@map("PASSWORD_RESET_TOKENS")
 }
 
-// ═══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SISTEMA DE VARIANTES DE PRODUCTOS
 // Permite control de stock por combinaciones de atributos
-// ═══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 model ProductoVariante {
   id_variante          String    @id @default(uuid()) @db.Uuid
   id_producto          String    @db.Uuid
   sku_variante         String?   @unique
-  atributos_valores    Json      // {"SABOR": "VAINILLA", "TAMAÑO": "1KG"}
+  atributos_valores    Json      // {"SABOR": "VAINILLA", "TAMAÃ‘O": "1KG"}
   stock_central        Int       @default(0)
-  precio_variante      Decimal   @db.Decimal(10, 2) @default(0)  // Precio específico (0 = usar precio del producto)
+  precio_variante      Decimal   @db.Decimal(10, 2) @default(0)  // Precio especÃ­fico (0 = usar precio del producto)
   activo               Boolean   @default(true)
   fecha_creacion       DateTime  @default(now())
-  fecha_actualizacion  DateTime? @updatedAt  // Opcional para permitir migración con datos existentes
+  fecha_actualizacion  DateTime? @updatedAt  // Opcional para permitir migraciÃ³n con datos existentes
 
   producto             Producto  @relation(fields: [id_producto], references: [id_producto], onDelete: Cascade)
   inventarios          InventarioComercioVariante[]
@@ -451,4 +464,25 @@ model Evento {
   usuarios_captados Usuario[]
 
   @@map("EVENTOS")
+}
+
+// SISTEMA DE RECTIFICACIONES
+model SolicitudRectificacion {
+  id_solicitud      String    @id @default(uuid()) @db.Uuid
+  tipo_entidad      String
+  id_entidad        String    @db.Uuid
+  id_comercio       String    @db.Uuid
+  id_solicitante    String    @db.Uuid
+  id_aprobador      String?   @db.Uuid
+  estado            String    @default("PENDIENTE")
+  motivo            String    @db.Text
+  datos_corregidos  String?   @db.Text
+  fecha_solicitud   DateTime  @default(now())
+  fecha_resolucion  DateTime?
+  motivo_rechazo    String?   @db.Text
+
+  @@index([id_comercio])
+  @@index([estado])
+  @@index([id_solicitante])
+  @@map("SOLICITUDES_RECTIFICACION")
 }

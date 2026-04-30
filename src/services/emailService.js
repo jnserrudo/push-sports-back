@@ -10,6 +10,10 @@ const fromEmail = process.env.FROM_EMAIL || 'jnserrudo@gmail.com';
 const fromName = process.env.FROM_NAME || 'Push Sport';
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+if (!process.env.FRONTEND_URL) {
+    console.warn('[EMAIL-SERVICE] ⚠️ FRONTEND_URL no está definida. Los links de recuperación podrían fallar en producción.');
+}
+
 /**
  * Genera un JWT específico para desuscripción.
  * Expira en 30 días para dar tiempo al usuario de hacer clic.

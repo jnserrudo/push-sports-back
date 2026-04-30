@@ -13,8 +13,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
         const id_usuario = req.user.id_usuario; // Usar ID del token
 
         // 1. Validar que el usuario tenga permiso para vender en este comercio
-        // Role 1 (SuperAdmin) puede vender en cualquiera. Roles 2 y 3 solo en el suyo.
-        if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== id_comercio) {
+        // Role 1 (SuperAdmin) puede vender en cualquiera. Roles 2 y 3 solo en el suyo, excepto supervisor global.
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (req.user.id_rol !== 1 && !isGlobalSupervisor && req.user.id_comercio_asignado !== id_comercio) {
             return res.status(403).json({ error: 'No tienes permiso para registrar ventas en este comercio.' });
         }
 
@@ -280,8 +281,9 @@ router.get('/:id', authMiddleware, async (req, res) => {
         });
         if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
 
-        // Roles 2 y 3 solo pueden ver ventas de su comercio
-        if (req.user.id_rol !== 1 && req.user.id_comercio_asignado !== venta.id_comercio) {
+        // Roles 2 y 3 solo pueden ver ventas de su comercio (salvo global supervisor)
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (req.user.id_rol !== 1 && !isGlobalSupervisor && req.user.id_comercio_asignado !== venta.id_comercio) {
             return res.status(403).json({ error: 'No tienes permiso para ver esta venta' });
         }
 
@@ -295,8 +297,9 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Historial de ventas
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        // SUPER_ADMIN (1) ve todo. Supervisor (2) y Vendedor (3) solo su comercio.
-        const filter = (req.user.id_rol === 1) ? {} : { id_comercio: req.user.id_comercio_asignado };
+        // SUPER_ADMIN (1) ve todo. Supervisor (2) y Vendedor (3) solo su comercio, salvo supervisor global.
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        const filter = (req.user.id_rol === 1 || isGlobalSupervisor) ? {} : { id_comercio: req.user.id_comercio_asignado };
 
         const ventas = await prisma.ventaCabecera.findMany({
             where: filter,

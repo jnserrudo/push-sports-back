@@ -27,9 +27,9 @@ router.post('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
     try {
         const { nombre, apellido, username, email, password, id_rol, id_comercio_asignado } = req.body;
 
-        // Validar que Supervisor (2) y Vendedor (3) tengan comercio
-        if ((id_rol === 2 || id_rol === 3) && !id_comercio_asignado) {
-            return res.status(400).json({ error: 'Supervisores y Vendedores deben tener un comercio asignado' });
+        // Validar que Vendedor (3) tenga comercio. Supervisor (2) puede no tenerlo (Global).
+        if (id_rol === 3 && !id_comercio_asignado) {
+            return res.status(400).json({ error: 'Los Vendedores deben tener un comercio asignado' });
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -43,7 +43,7 @@ router.post('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 email,
                 password_hash,
                 id_rol: parseInt(id_rol),
-                id_comercio_asignado: (id_rol === 2 || id_rol === 3) ? id_comercio_asignado : null
+                id_comercio_asignado: (id_rol === 2 || id_rol === 3) ? (id_comercio_asignado || null) : null
             }
         });
 
@@ -73,9 +73,9 @@ router.put('/:id', authMiddleware, roleMiddleware([1]), async (req, res) => {
         const { id } = req.params;
         const { nombre, apellido, username, email, id_rol, id_comercio_asignado, activo } = req.body;
 
-        // Validar que Supervisor (2) y Vendedor (3) tengan comercio al ser promovidos o editados
-        if (id_rol && (id_rol === 2 || id_rol === 3) && !id_comercio_asignado) {
-            return res.status(400).json({ error: 'Para este rol es obligatorio asignar un comercio' });
+        // Validar que Vendedor (3) tenga comercio al ser promovido
+        if (id_rol && id_rol === 3 && !id_comercio_asignado) {
+            return res.status(400).json({ error: 'Para los Vendedores es obligatorio asignar un comercio' });
         }
 
         const usuarioStatus = await prisma.usuario.findUnique({ where: { id_usuario: id } });
@@ -89,7 +89,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 username,
                 email,
                 id_rol: id_rol ? parseInt(id_rol) : undefined,
-                id_comercio_asignado: (id_rol === 2 || id_rol === 3) ? id_comercio_asignado : (id_rol === 1 || id_rol === 4 ? null : undefined),
+                id_comercio_asignado: (id_rol === 2 || id_rol === 3) ? (id_comercio_asignado || null) : (id_rol === 1 || id_rol === 4 ? null : undefined),
                 activo
             }
         });

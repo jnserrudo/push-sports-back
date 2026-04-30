@@ -24,8 +24,9 @@ router.get('/', authMiddleware, async (req, res) => {
         // Construir where dinámico
         const where = {};
 
-        // Roles 2 y 3 solo pueden ver movimientos de su propio comercio
-        if (req.user.id_rol === 2 || req.user.id_rol === 3) {
+        // Roles 2 y 3 solo pueden ver movimientos de su propio comercio (salvo supervisor global)
+        const isGlobalSupervisor = req.user.id_rol === 2 && !req.user.id_comercio_asignado;
+        if (!isGlobalSupervisor && (req.user.id_rol === 2 || req.user.id_rol === 3)) {
             where.id_comercio = req.user.id_comercio_asignado;
         }
 

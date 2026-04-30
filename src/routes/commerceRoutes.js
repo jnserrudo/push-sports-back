@@ -66,7 +66,8 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const { id } = req.params;
         const { tipo_comercio, ...validData } = req.body;
 
-        if (req.user.id_rol === 2 && req.user.id_comercio_asignado !== id) {
+        // Supervisor solo puede editar su propio comercio (salvo supervisor global)
+        if (req.user.id_rol === 2 && req.user.id_comercio_asignado && req.user.id_comercio_asignado !== id) {
             return res.status(403).json({ error: 'Solo puedes editar tu propio comercio' });
         }
 
