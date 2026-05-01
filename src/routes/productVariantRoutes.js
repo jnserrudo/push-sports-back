@@ -184,12 +184,22 @@ router.post('/productos/:id_producto/variantes/generar',
         nuevasVariantes.push(variante);
       }
       
+      // Auto-activar gestión por variantes si se crearon nuevas
+      const totalVariantes = producto.variantes.length + nuevasVariantes.length;
+      if (totalVariantes > 0) {
+        await prisma.producto.update({
+          where: { id_producto },
+          data: { usa_variantes: true }
+        });
+      }
+
       res.status(201).json({
         message: `Se generaron ${nuevasVariantes.length} nuevas variantes`,
         combinaciones_totales: combinaciones.length,
         variantes_existentes: producto.variantes.length,
         variantes_creadas: nuevasVariantes.length,
-        variantes: nuevasVariantes
+        variantes: nuevasVariantes,
+        usa_variantes: true
       });
       
     } catch (error) {
@@ -252,9 +262,16 @@ router.post('/productos/:id_producto/variantes',
         }
       });
       
+      // Auto-activar gestión por variantes
+      await prisma.producto.update({
+        where: { id_producto },
+        data: { usa_variantes: true }
+      });
+      
       res.status(201).json({
         message: 'Variante creada exitosamente',
-        variante
+        variante,
+        usa_variantes: true
       });
       
     } catch (error) {
@@ -403,13 +420,17 @@ router.post('/productos/:id_producto/migrar-stock',
         return res.status(404).json({ error: 'Producto no encontrado' });
       }
       
-      const stockCentralActual = producto.stock_central;
-      const totalDistribuido = Object.values(distribucion).reduce((a, b) => a + parseInt(b), 0);
+      const stockCentralActual = parseInt(producto.stock_central) || 0;
+      const totalDistribuido = Object.values(distribucion).reduce((a, b) => {
+        const val = parseInt(b) || 0;
+        return a + val;
+      }, 0);
       
       // Validar que la suma coincida (con tolerancia de 0)
       if (totalDistribuido !== stockCentralActual) {
         return res.status(400).json({
           error: 'La distribución no coincide con el stock central',
+          message: `La suma de las cantidades (${totalDistribuido}) debe ser exactamente igual al stock central del producto (${stockCentralActual}).`,
           stock_central: stockCentralActual,
           total_distribuido: totalDistribuido,
           diferencia: stockCentralActual - totalDistribuido
@@ -439,16 +460,21 @@ router.post('/productos/:id_producto/migrar-stock',
         // 2. Sumar a cada variante
         const actualizaciones = [];
         for (const [id_variante, cantidad] of Object.entries(distribucion)) {
+          const valorNum = parseInt(cantidad) || 0;
+          
+          // Solo actualizar si hay algo que sumar (para evitar hits innecesarios a la DB)
+          if (valorNum === 0) continue;
+
           const variante = await tx.productoVariante.update({
             where: { id_variante },
             data: {
-              stock_central: { increment: parseInt(cantidad) }
+              stock_central: { increment: valorNum }
             }
           });
           actualizaciones.push({
             id_variante,
             atributos: variante.atributos_valores,
-            cantidad_asignada: parseInt(cantidad)
+            cantidad_asignada: valorNum
           });
         }
         
@@ -496,29 +522,67 @@ router.put('/productos/:id_producto/usa-variantes',
       if (usa_variantes && producto.variantes.length === 0) {
         return res.status(400).json({
           error: 'El producto no tiene variantes definidas',
-          message: 'Generá variantes primero antes de activar el sistema'
+          message: 'Generá variantes primero antes de activar la gestión por variantes'
         });
       }
       
-      // Si se está activando y hay stock central, requerir migración
+      // Si se está DESACTIVANDO, verificar que no haya stock en variantes
+      if (!usa_variantes) {
+        const variantesConStock = producto.variantes.filter(v => v.stock_central > 0);
+        if (variantesConStock.length > 0) {
+          const totalStock = variantesConStock.reduce((sum, v) => sum + v.stock_central, 0);
+          return res.status(400).json({
+            error: 'No se puede desactivar la gestión por variantes',
+            message: `Existen ${variantesConStock.length} variantes con un total de ${totalStock} unidades de stock. Para desactivar, primero ajustá el stock de todas las variantes a 0.`,
+            variantes_con_stock: variantesConStock.length,
+            stock_total: totalStock
+          });
+        }
+
+        // Verificar si hay stock en sedes (inventarios de variantes)
+        const inventariosVariantes = await prisma.inventarioComercioVariante.findMany({
+          where: {
+            variante: { id_producto },
+            cantidad_actual: { gt: 0 }
+          }
+        });
+        if (inventariosVariantes.length > 0) {
+          return res.status(400).json({
+            error: 'No se puede desactivar la gestión por variantes',
+            message: 'Existen sedes con stock asignado a variantes de este producto. Para desactivar, primero retirá el stock de las sedes.'
+          });
+        }
+      }
+      
+      // Si se está activando y hay stock central, verificar si las variantes ya tienen stock
       let requiere_migracion = false;
       if (usa_variantes && producto.stock_central > 0) {
-        requiere_migracion = true;
+        const stockEnVariantes = producto.variantes.reduce((sum, v) => sum + (v.stock_central || 0), 0);
+        
+        if (stockEnVariantes > 0) {
+          // Las variantes ya tienen stock: recalcular stock_central como la suma
+          requiere_migracion = false;
+        } else {
+          requiere_migracion = true;
+        }
+      }
+      
+      // Recalcular stock_central como suma de variantes si corresponde
+      const stockEnVariantes = producto.variantes.reduce((sum, v) => sum + (v.stock_central || 0), 0);
+      const dataToUpdate = { usa_variantes };
+      if (usa_variantes && stockEnVariantes > 0) {
+        dataToUpdate.stock_central = stockEnVariantes;
       }
       
       const actualizado = await prisma.producto.update({
         where: { id_producto },
-        data: {
-          usa_variantes,
-          // Si estamos activando y hay stock, marcar que necesita migración
-          // Esto se manejaría con un campo en inventario_comercio
-        }
+        data: dataToUpdate
       });
       
       res.json({
         message: usa_variantes 
-          ? 'Sistema de variantes activado'
-          : 'Sistema de variantes desactivado',
+          ? 'Gestión por variantes activada correctamente'
+          : 'Gestión por variantes desactivada correctamente',
         usa_variantes: actualizado.usa_variantes,
         requiere_migracion,
         stock_central: producto.stock_central,
