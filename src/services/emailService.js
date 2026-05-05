@@ -90,7 +90,7 @@ const generateVerificationEmailTemplate = (otpCode, nombre) => `
             Este código expirará en <span class="highlight">15 minutos</span>.<br>
             Si no solicitaste este código, puedes ignorar este mensaje de forma segura.
         </div>
-        <a href="https://push-sports-front.onrender.com/" target="_blank" style="display: inline-block; margin-top: 20px; padding: 14px 28px; background-color: #00e5ff; color: #000000; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 14px; text-transform: uppercase; transition: transform 0.2s;">
+        <a href="${frontendUrl}" target="_blank" style="display: inline-block; margin-top: 20px; padding: 14px 28px; background-color: #00e5ff; color: #000000; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 14px; text-transform: uppercase; transition: transform 0.2s;">
             Acceder al Sistema
         </a>
         <div class="text" style="font-size: 11px; margin-top: 15px; color: #737373;">
@@ -208,7 +208,7 @@ const sendVerificationOTP = async (email, otpCode, nombre) => {
  */
 const sendResetPasswordEmail = async (email, resetToken, nombre) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const resetLink = `${frontendUrl}/reset-password/${resetToken}`;
+    const resetLink = `${frontendUrl}/#/reset-password/${resetToken}`;
     const subject = "Push Sport - Restablecer Contraseña";
     const html = generateResetPasswordTemplate(resetLink, nombre);
     return await sendEmail(email, subject, `Restablece tu contraseña en: ${resetLink}`, html);
@@ -378,7 +378,7 @@ const sendWelcomeEmail = async (email, nombre) => {
             Hola <span class="highlight">${nombre}</span>,<br><br>
             Tu cuenta ha sido verificada correctamente. Ya puedes acceder a todas las funciones profesionales de la plataforma Push Sport.
         </div>
-        <a href="https://push-sports-front.onrender.com/" target="_blank" class="btn">
+        <a href="${frontendUrl}" target="_blank" class="btn">
             Ingresar al Sistema
         </a>
         <div class="text" style="font-size: 12px; margin-top: 25px;">
