@@ -119,6 +119,165 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     }
 });
 
+// Actualización masiva de precios (Solo SUPER_ADMIN) - DEBE IR ANTES DE /:id
+router.put('/bulk-update-prices', authMiddleware, roleMiddleware([1]), async (req, res) => {
+    console.log('========== BULK UPDATE ENDPOINT CALLED ==========');
+    console.log('Request body:', req.body);
+    console.log('User:', req.user);
+    
+    try {
+        const { productIds, percentage, applyTo } = req.body;
+        const id_usuario = req.user.id_usuario;
+
+        console.log('Bulk update request:', { productIds, percentage, applyTo, id_usuario });
+
+        // Validaciones
+        if (!percentage || !applyTo) {
+            return res.status(400).json({ error: 'Faltan parámetros: percentage y applyTo son obligatorios' });
+        }
+
+        const percentageNum = parseFloat(percentage);
+        if (isNaN(percentageNum) || percentageNum < -100 || percentageNum > 1000) {
+            return res.status(400).json({ error: 'El porcentaje debe estar entre -100 y 1000' });
+        }
+
+        if (!['precio_venta_sugerido', 'precio_pushsport', 'both'].includes(applyTo)) {
+            return res.status(400).json({ error: 'applyTo debe ser: precio_venta_sugerido, precio_pushsport o both' });
+        }
+
+        // Determinar qué productos actualizar
+        const whereClause = productIds && productIds.length > 0
+            ? { id_producto: { in: productIds }, activo: true }
+            : { activo: true };
+
+        const productosAActualizar = await prisma.producto.findMany({
+            where: whereClause,
+            select: {
+                id_producto: true,
+                nombre: true,
+                precio_venta_sugerido: true,
+                precio_pushsport: true
+            }
+        });
+
+        if (productosAActualizar.length === 0) {
+            return res.status(404).json({ error: 'No se encontraron productos para actualizar' });
+        }
+
+        const factor = 1 + (percentageNum / 100);
+        const updatedProducts = [];
+        const auditDetails = [];
+
+        console.log('Productos a actualizar:', productosAActualizar.length);
+
+        // Ejecutar actualización en transacción con timeout extendido
+        await prisma.$transaction(async (tx) => {
+            for (const producto of productosAActualizar) {
+                const updateData = {};
+                const cambios = {};
+
+                if (applyTo === 'precio_venta_sugerido' || applyTo === 'both') {
+                    const precioAnterior = parseFloat(producto.precio_venta_sugerido) || 0;
+                    const precioNuevo = Math.max(0, Math.round(precioAnterior * factor * 100) / 100);
+                    updateData.precio_venta_sugerido = precioNuevo;
+                    cambios.precio_venta_sugerido = { anterior: precioAnterior, nuevo: precioNuevo };
+                }
+
+                if (applyTo === 'precio_pushsport' || applyTo === 'both') {
+                    const precioAnterior = parseFloat(producto.precio_pushsport) || 0;
+                    const precioNuevo = Math.max(0, Math.round(precioAnterior * factor * 100) / 100);
+                    updateData.precio_pushsport = precioNuevo;
+                    cambios.precio_pushsport = { anterior: precioAnterior, nuevo: precioNuevo };
+                }
+
+                // Actualizar producto
+                const updated = await tx.producto.update({
+                    where: { id_producto: producto.id_producto },
+                    data: updateData,
+                    include: { marca: true, categoria: true }
+                });
+
+                updatedProducts.push(updated);
+
+                // Registrar en auditoría individual
+                try {
+                    await tx.auditoriaSistema.create({
+                        data: {
+                            id_usuario,
+                            entidad_afectada: 'Producto',
+                            id_entidad_afectada: producto.id_producto,
+                            accion: 'BULK_PRICE_UPDATE',
+                            descripcion_accion: `Actualización masiva de precios: ${percentageNum > 0 ? '+' : ''}${percentageNum}% en ${applyTo}`,
+                            datos_anteriores: JSON.stringify({
+                                nombre: producto.nombre,
+                                precio_venta_sugerido: producto.precio_venta_sugerido,
+                                precio_pushsport: producto.precio_pushsport
+                            }),
+                            datos_nuevos: JSON.stringify({
+                                nombre: producto.nombre,
+                                cambios,
+                                porcentaje_aplicado: percentageNum
+                            }),
+                            id_producto: producto.id_producto,
+                            endpoint: '/api/productos/bulk-update-prices',
+                            metodo_http: 'PUT'
+                        }
+                    });
+                } catch (auditError) {
+                    console.error('Error en auditoría individual:', auditError);
+                    // Continuar con la actualización aunque falle la auditoría
+                }
+
+                auditDetails.push({
+                    id_producto: producto.id_producto,
+                    nombre: producto.nombre,
+                    cambios
+                });
+            }
+
+            // Registro de auditoría resumen
+            try {
+                await tx.auditoriaSistema.create({
+                    data: {
+                        id_usuario,
+                        entidad_afectada: 'Producto',
+                        id_entidad_afectada: null,
+                        accion: 'BULK_PRICE_UPDATE',
+                        descripcion_accion: `Actualización masiva: ${updatedProducts.length} productos, ${percentageNum > 0 ? '+' : ''}${percentageNum}% en ${applyTo}`,
+                        datos_nuevos: JSON.stringify({
+                            cantidad_productos: updatedProducts.length,
+                            porcentaje: percentageNum,
+                            campo_afectado: applyTo,
+                            resumen: auditDetails.slice(0, 10) // Primeros 10 para el resumen
+                        }),
+                        endpoint: '/api/productos/bulk-update-prices',
+                        metodo_http: 'PUT'
+                    }
+                });
+            } catch (auditError) {
+                console.error('Error en auditoría resumen:', auditError);
+                // Continuar aunque falle la auditoría
+            }
+        }, {
+            maxWait: 30000, // 30 segundos
+            timeout: 60000, // 60 segundos
+        });
+
+        console.log('Actualización masiva completada:', updatedProducts.length, 'productos');
+
+        res.json({
+            message: `${updatedProducts.length} producto${updatedProducts.length !== 1 ? 's' : ''} actualizado${updatedProducts.length !== 1 ? 's' : ''} exitosamente`,
+            count: updatedProducts.length,
+            percentage: percentageNum,
+            applyTo,
+            products: updatedProducts
+        });
+    } catch (error) {
+        console.error('Error PUT /productos/bulk-update-prices:', error);
+        res.status(500).json({ error: 'Error al actualizar precios masivamente', detail: error.message });
+    }
+});
+
 // Actualizar un producto (SUPER_ADMIN / ADMIN_SUCURSAL)
 router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     try {

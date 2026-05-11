@@ -36,6 +36,7 @@ app.use('/api', auditMiddleware);
 // Routes
 const salesRoutes = require('./src/routes/salesRoutes');
 const liquidationRoutes = require('./src/routes/liquidationRoutes');
+const bulkUpdateSimple = require('./src/routes/bulkUpdateSimple');
 const productRoutes = require('./src/routes/productRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const commerceRoutes = require('./src/routes/commerceRoutes');
@@ -66,6 +67,20 @@ app.use('/api/auth', authRoutes);
 
 app.use('/api/ventas', salesRoutes);
 app.use('/api/liquidaciones', liquidationRoutes);
+
+// Ruta simple de bulk-update - DEBE IR ANTES
+app.use('/api', bulkUpdateSimple);
+
+// Logging middleware GLOBAL
+app.use((req, res, next) => {
+    console.log(`\n========== REQUEST ==========`);
+    console.log(`${req.method} ${req.url}`);
+    console.log('Headers:', req.headers);
+    console.log('Body:', req.body);
+    console.log('============================\n');
+    next();
+});
+
 app.use('/api/productos', productRoutes);
 app.use('/api/usuarios', userRoutes);
 app.use('/api/comercios', commerceRoutes);
