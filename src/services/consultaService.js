@@ -611,26 +611,13 @@ class ConsultaService {
   // Obtener consulta por token de seguimiento (vista pública)
   async obtenerConsultaPorToken(token) {
     try {
+      console.log('🔍 [SERVICE] Buscando consulta con token:', token);
+      
       const consulta = await prisma.consultaPedido.findUnique({
         where: { token_seguimiento: token },
         include: {
-          sucursal: {
-            select: {
-              nombre: true,
-              direccion: true,
-              telefono: true
-            }
-          },
-          items: {
-            include: {
-              producto: {
-                select: {
-                  nombre: true,
-                  imagen_url: true
-                }
-              }
-            }
-          }
+          sucursal: true,
+          items: true
         }
       });
 
