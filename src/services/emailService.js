@@ -11,7 +11,7 @@ const fromName = process.env.FROM_NAME || 'Push Sport';
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 if (!process.env.FRONTEND_URL) {
-    console.warn('[EMAIL-SERVICE] ⚠️ FRONTEND_URL no está definida. Los links de recuperación podrían fallar en producción.');
+    console.warn('[EMAIL-SERVICE] ADVERTENCIA: FRONTEND_URL no está definida. Los links de recuperación podrían fallar en producción.');
 }
 
 /**
@@ -157,7 +157,7 @@ const sendEmail = async (to, subject, text, html) => {
         }
 
         if (!brevoApiKey) {
-            console.warn('[EMAIL] ⚠️ BREVO_API_KEY no configurada. El correo se logueará en consola pero no se enviará.');
+            console.warn('[EMAIL] ADVERTENCIA: BREVO_API_KEY no configurada. El correo se logueará en consola pero no se enviará.');
             console.log(`[DEBUG-EMAIL] Destino: ${to} | Asunto: ${subject} | HTML: ${html ? 'SÍ' : 'NO'}`);
             return { success: true, simulated: true };
         }
@@ -236,7 +236,7 @@ const generateLowStockAlertTemplate = (producto, sucursal, cantidad, minimo) => 
 </head>
 <body>
     <div class="container">
-        <div class="header">⚠️ Alerta de Inventario Crítico</div>
+        <div class="header">Alerta de Inventario Crítico</div>
         <div class="title">Stock Mínimo Alcanzado</div>
         <div class="box">
             <div class="item-row">
@@ -320,7 +320,7 @@ const generateWeeklyReportTemplate = (data, nombreAdmin) => {
  */
 const sendLowStockAlert = async (emails, data) => {
     const { producto, sucursal, cantidad, minimo } = data;
-    const subject = `⚠️ ALERTA: Stock Bajo en ${sucursal} - ${producto}`;
+    const subject = `ALERTA: Stock Bajo en ${sucursal} - ${producto}`;
     const html = generateLowStockAlertTemplate(producto, sucursal, cantidad, minimo);
     
     // Si emails es array, enviar individualmente o vía BCC (aquí individual por simplicidad)
@@ -346,7 +346,7 @@ const sendWeeklyReport = async (email, data, nombreAdmin) => {
  * Enviar Email de Bienvenida / Verificación Exitosa
  */
 const sendWelcomeEmail = async (email, nombre) => {
-    const subject = "🚀 ¡Bienvenido a Push Sport! Cuenta Verificada";
+    const subject = "¡Bienvenido a Push Sport! Cuenta Verificada";
     const html = `
 <!DOCTYPE html>
 <html>

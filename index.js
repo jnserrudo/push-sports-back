@@ -1,14 +1,26 @@
+console.log('🔵 Iniciando servidor...');
 const express = require('express');
+console.log('✅ Express cargado');
 const cors = require('cors');
+console.log('✅ CORS cargado');
 const morgan = require('morgan');
+console.log('✅ Morgan cargado');
 require('dotenv').config();
+console.log('✅ Dotenv configurado');
 
 const app = express();
+console.log('✅ App Express creada');
 
 // Middlewares básicos
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
+
+// Logging middleware GLOBAL - movido al principio
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
 
 // Basic health check
 app.get('/health', (req, res) => {
@@ -47,6 +59,7 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const historyRoutes = require('./src/routes/historyRoutes');
 const auditRoutes = require('./src/routes/auditRoutes');
 const authRoutes = require('./src/routes/authRoutes');
+console.log('✅ authRoutes cargado');
 const discountRoutes = require('./src/routes/discountRoutes');
 const offerRoutes = require('./src/routes/offerRoutes');
 const comboRoutes = require('./src/routes/comboRoutes');
@@ -58,6 +71,7 @@ const reportRoutes = require('./src/routes/reportRoutes');
 const eventRoutes = require('./src/routes/eventRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
 const rectificationRoutes = require('./src/routes/rectificationRoutes');
+const consultaRoutes = require('./src/routes/consultaRoutes');
 
 // Rutas Públicas (B2C) — SIN autenticación JWT
 app.use('/api/public', publicRoutes);
@@ -71,15 +85,6 @@ app.use('/api/liquidaciones', liquidationRoutes);
 // Ruta simple de bulk-update - DEBE IR ANTES
 app.use('/api', bulkUpdateSimple);
 
-// Logging middleware GLOBAL
-app.use((req, res, next) => {
-    console.log(`\n========== REQUEST ==========`);
-    console.log(`${req.method} ${req.url}`);
-    console.log('Headers:', req.headers);
-    console.log('Body:', req.body);
-    console.log('============================\n');
-    next();
-});
 
 app.use('/api/productos', productRoutes);
 app.use('/api/usuarios', userRoutes);
@@ -100,6 +105,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reportes', reportRoutes);
 app.use('/api/eventos', eventRoutes);
 app.use('/api/rectificaciones', rectificationRoutes);
+app.use('/api/consultas', consultaRoutes);
 
 // Configuración de Swagger
 const fs = require('fs');
@@ -115,9 +121,51 @@ if (fs.existsSync(swaggerFile)) {
 }
 
 // Start Server
+console.log('🔵 Iniciando servidor HTTP...');
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+const server = app.listen(PORT, () => {
+    console.log(`✅ Server listening on port ${PORT}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+    console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
+    console.log('🟢 Servidor completamente iniciado y listo para recibir peticiones');
+});
+
+// Forzar que el servidor se mantenga activo
+server.on('close', () => {
+    console.log('⚠️ Server closed event');
+});
+
+// Detectar cierre del servidor
+process.on('exit', (code) => {
+    console.log(`⚠️ Process exit event with code: ${code}`);
+});
+
+process.on('SIGTERM', () => {
+    console.log('⚠️ SIGTERM signal received');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('⚠️ SIGINT signal received');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+// Evitar salida inesperada
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    server.close(() => {
+        process.exit(1);
+    });
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 module.exports = app;

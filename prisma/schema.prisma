@@ -91,6 +91,7 @@ model Producto {
   ventas_detalle        VentaDetalle[]
   movimientos           MovimientoStock[]
   devoluciones          Devolucion[]
+  consultas_items       ConsultaPedidoItem[]
 
   @@map("PRODUCTOS")
 }
@@ -146,6 +147,7 @@ model Comercio {
   liquidaciones_cierre Liquidacion[]
   movimientos_stock    MovimientoStock[]
   devoluciones         Devolucion[]
+  consultas_pedidos    ConsultaPedido[]
 
   @@map("COMERCIOS")
 }
@@ -236,6 +238,7 @@ model VentaCabecera {
   devoluciones     Devolucion[]
   venta_origen     VentaCabecera?  @relation("RectificacionOrigen", fields: [id_venta_origen], references: [id_venta])
   rectificaciones  VentaCabecera[] @relation("RectificacionOrigen")
+  consultas_origen ConsultaPedido[]
 
   @@map("VENTAS_CABECERA")
 }
@@ -407,6 +410,7 @@ model ProductoVariante {
   inventarios          InventarioComercioVariante[]
   movimientos          MovimientoStockVariante[]
   ventas_detalle       VentaDetalleVariante[]
+  consultas_items      ConsultaPedidoItem[]
 
   @@map("PRODUCTOS_VARIANTES")
 }
@@ -485,4 +489,63 @@ model SolicitudRectificacion {
   @@index([estado])
   @@index([id_solicitante])
   @@map("SOLICITUDES_RECTIFICACION")
+}
+
+model ConsultaPedido {
+  id_consulta         String   @id @default(uuid()) @db.Uuid
+  
+  // Datos del cliente
+  nombre_cliente      String
+  telefono_cliente    String
+  email_cliente       String?
+  
+  // Datos del pedido
+  id_sucursal         String   @db.Uuid
+  metodo_entrega      String   // 'retiro' | 'envio'
+  comentarios         String?  @db.Text
+  
+  // Totales
+  total               Decimal  @db.Decimal(10, 2)
+  cantidad_items      Int
+  
+  // Estado y seguimiento
+  estado              String   @default("PENDIENTE") // PENDIENTE | EN_PROCESO | CONFIRMADO | CANCELADO
+  origen              String   @default("WEB")
+  token_seguimiento   String?  @unique // Token único para seguimiento público
+  fecha_consulta      DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+  
+  // Relaciones
+  sucursal            Comercio @relation(fields: [id_sucursal], references: [id_comercio])
+  items               ConsultaPedidoItem[]
+  
+  // Conversión a venta
+  id_venta_generada   String?  @db.Uuid
+  venta_generada      VentaCabecera? @relation(fields: [id_venta_generada], references: [id_venta])
+
+  @@index([estado])
+  @@index([fecha_consulta])
+  @@index([id_sucursal])
+  @@map("CONSULTAS_PEDIDOS")
+}
+
+model ConsultaPedidoItem {
+  id_item         String   @id @default(uuid()) @db.Uuid
+  id_consulta     String   @db.Uuid
+  id_producto     String   @db.Uuid
+  nombre_producto String
+  cantidad        Int
+  precio_unitario Decimal  @db.Decimal(10, 2)
+  subtotal        Decimal  @db.Decimal(10, 2)
+  
+  // Variante (si aplica)
+  id_variante     String?  @db.Uuid
+  variante_info   Json?
+  
+  consulta        ConsultaPedido @relation(fields: [id_consulta], references: [id_consulta], onDelete: Cascade)
+  producto        Producto @relation(fields: [id_producto], references: [id_producto])
+  variante        ProductoVariante? @relation(fields: [id_variante], references: [id_variante])
+  
+  @@index([id_consulta])
+  @@map("CONSULTAS_PEDIDOS_ITEMS")
 }

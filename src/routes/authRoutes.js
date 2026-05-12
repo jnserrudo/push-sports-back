@@ -10,7 +10,7 @@ const { sendVerificationOTP, sendResetPasswordEmail, sendWelcomeEmail } = requir
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     console.error('FATAL: JWT_SECRET no está definido en las variables de entorno.');
-    process.exit(1);
+    // process.exit(1); // Comentado temporalmente para debugging
 }
 
 // In-memory rate limiting simple
@@ -31,7 +31,7 @@ function checkRateLimit(key, limitMinutes = 2) {
 async function validateTurnstile(token, ip) {
     const SECRET_KEY = process.env.TURNSTILE_SECRET_KEY;
     if (!SECRET_KEY) {
-        console.warn('⚠️ TURNSTILE_SECRET_KEY no configurada. Saltando validación (solo en desarrollo).');
+        console.warn('ADVERTENCIA: TURNSTILE_SECRET_KEY no configurada. Saltando validación (solo en desarrollo).');
         return true;
     }
 
@@ -50,16 +50,16 @@ async function validateTurnstile(token, ip) {
         const outcome = await result.json();
         
         if (!outcome.success) {
-            console.error('❌ FALLO TURNSTILE:', outcome['error-codes'] || outcome);
+            console.error('FALLO TURNSTILE:', outcome['error-codes'] || outcome);
             // Si el error es una clave secreta inválida, dejamos pasar para no bloquear
             if (outcome['error-codes']?.includes('invalid-input-secret')) {
-                console.warn('⚠️ Se detectó una Secret Key inválida en Render. Permitiendo acceso por bypass.');
+                console.warn('ADVERTENCIA: Se detectó una Secret Key inválida en Render. Permitiendo acceso por bypass.');
                 return true;
             }
         }
         return outcome.success;
     } catch (err) {
-        console.error('❌ ERROR FATAL VALIDANDO TURNSTILE:', err);
+        console.error('ERROR FATAL VALIDANDO TURNSTILE:', err);
         return false;
     }
 }

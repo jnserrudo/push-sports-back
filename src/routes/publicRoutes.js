@@ -1,7 +1,11 @@
+const { PrismaClient } = require('@prisma/client');
+const notificacionService = require('../services/notificacionService');
+const consultaService = require('../services/consultaService');
+const jwt = require('jsonwebtoken');
 const express = require('express');
 const router = express.Router();
-const prisma = require('../config/prisma');
-const jwt = require('jsonwebtoken');
+
+const prisma = new PrismaClient();
 
 // GET /api/public/catalog
 // Catálogo público B2C. Devuelve productos activos con precio al público, variantes y stock distribuido por sucursal.
@@ -44,7 +48,7 @@ router.get('/catalog', async (req, res) => {
                 .map(inv => ({
                     id: inv.comercio.id_comercio,
                     sucursal: inv.comercio.nombre,
-                    // cantidad: inv.cantidad_actual // Opcional ocultar cantidad exacta y poner solo 'Disponible'
+                    cantidad: inv.cantidad_actual // Necesario para validar stock en checkout
                 }));
 
             return {
@@ -149,6 +153,81 @@ router.get('/sucursales', async (req, res) => {
         console.error('[PUBLIC] Error GET /sucursales:', error);
         res.status(500).json({ error: 'Error al obtener las sucursales.' });
     }
+});
+
+// POST /api/public/consultas - Crear nueva consulta (endpoint público)
+router.post('/consultas', async (req, res) => {
+  try {
+    console.log('📥 [PUBLIC] Request received:', req.body);
+    
+    // Crear consulta usando el servicio
+    const consultaService = require('../services/consultaService');
+    const consulta = await consultaService.crearConsulta(req.body);
+    
+    console.log('✅ [PUBLIC] Consulta creada:', consulta.id_consulta);
+    
+    // Enviar notificaciones a los administradores y vendedores
+    try {
+      await notificacionService.notificarConsultaWeb(consulta);
+      console.log('📧 [PUBLIC] Notificaciones enviadas para consulta:', consulta.id_consulta);
+    } catch (error) {
+      console.error('❌ [PUBLIC] Error al enviar notificaciones:', error);
+      // No fallamos el request si las notificaciones fallan
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Consulta creada exitosamente',
+      data: {
+        id: consulta.id_consulta,
+        estado: consulta.estado,
+        fecha: consulta.fecha_consulta,
+        token_seguimiento: consulta.token_seguimiento
+      }
+    });
+  } catch (error) {
+    console.error('Error en endpoint de consultas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/public/consulta/:token - Obtener consulta por token (seguimiento público)
+router.get('/consulta/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token de seguimiento requerido'
+      });
+    }
+    
+    const consulta = await consultaService.obtenerConsultaPorToken(token);
+    
+    res.json({
+      success: true,
+      data: consulta
+    });
+  } catch (error) {
+    console.error('[PUBLIC] Error GET /consulta/:token:', error);
+    
+    if (error.message === 'Consulta no encontrada') {
+      return res.status(404).json({
+        success: false,
+        message: 'Consulta no encontrada. Verifica el enlace de seguimiento.'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener la consulta'
+    });
+  }
 });
 
 module.exports = router;

@@ -30,13 +30,13 @@ async function revert10Percent() {
                 }
             });
 
-            console.log(`✅ ${producto.nombre}: $${producto.precio_venta_sugerido} → $${Math.round(precioVentaOriginal * 100) / 100}`);
+            console.log(`OK ${producto.nombre}: $${producto.precio_venta_sugerido} → $${Math.round(precioVentaOriginal * 100) / 100}`);
         }
 
-        console.log('🎉 ¡Todos los precios han sido revertidos exactamente!');
+        console.log('Todos los precios han sido revertidos exactamente!');
         
     } catch (error) {
-        console.error('❌ Error:', error);
+        console.error('Error:', error);
     } finally {
         await prisma.$disconnect();
     }
