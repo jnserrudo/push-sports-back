@@ -13,6 +13,8 @@ router.get('/', async (req, res) => {
             entidad,
             id_entidad,
             usuario,
+            usuario_real,
+            usuario_impersonado,
             comercio,
             producto,
             venta,
@@ -38,6 +40,14 @@ router.get('/', async (req, res) => {
 
         if (usuario) {
             where.id_usuario = usuario;
+        }
+
+        if (usuario_real) {
+            where.id_usuario_real = usuario_real;
+        }
+
+        if (usuario_impersonado) {
+            where.id_usuario_impersonado = usuario_impersonado;
         }
 
         if (comercio) {

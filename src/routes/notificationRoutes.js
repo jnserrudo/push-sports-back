@@ -22,13 +22,29 @@ router.get('/', roleMiddleware([1]), async (req, res) => {
 router.get('/usuario/:id_usuario', async (req, res) => {
     try {
         const { id_usuario } = req.params;
+        const { view_as } = req.query; // 'current', 'real', o undefined
 
         if (req.user.id_rol !== 1 && req.user.id_usuario !== id_usuario) {
             return res.status(403).json({ error: 'No tienes permiso para ver estas notificaciones' });
         }
 
+        // Determinar qué notificaciones mostrar
+        let targetUserId = id_usuario;
+        
+        // Si hay impersonación activa y se especifica view_as
+        if (req.realUser && req.impersonatedUser) {
+            if (view_as === 'real') {
+                // Ver notificaciones del admin real
+                targetUserId = req.realUser.id_usuario;
+            } else if (view_as === 'current') {
+                // Ver notificaciones del usuario impersonado
+                targetUserId = req.impersonatedUser.id_usuario;
+            }
+            // Si no se especifica view_as, usar el id_usuario del parámetro
+        }
+
         const notificaciones = await prisma.notificacion.findMany({
-            where: { id_usuario },
+            where: { id_usuario: targetUserId },
             orderBy: { fecha_envio: 'desc' }
         });
         res.json(notificaciones);

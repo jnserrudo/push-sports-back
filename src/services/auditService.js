@@ -214,6 +214,9 @@ const auditMiddleware = (req, res, next) => {
         userId: req.user?.id_usuario || null,
         userEmail: req.user?.email || null,
         userRol: req.user?.rol || null,
+        // Campos de impersonación
+        realUserId: req.realUser?.id_usuario || null,
+        impersonatedUserId: req.impersonatedUser?.id_usuario || null,
         endpoint: req.originalUrl || req.url,
         metodo_http: req.method,
         ip_usuario: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
@@ -288,10 +291,15 @@ const auditExtension = Prisma.defineExtension((client) => {
                             }
                         }
                         
-                        // Generar descripción legible
-                        const descripcionAccion = generarDescripcion(
+                        // Generar descripción legible (incluir info de impersonación si aplica)
+                        let descripcionAccion = generarDescripcion(
                             model, operation, cambiosDetectados, result || registroPrevio
                         );
+                        
+                        // Si hay impersonación, agregar prefijo a la descripción
+                        if (store.realUserId && store.impersonatedUserId) {
+                            descripcionAccion = `[IMPERSONACIÓN] ${descripcionAccion}`;
+                        }
                         
                         // Extraer IDs directamente del resultado (sin queries adicionales)
                         const idsRelacionados = {};
@@ -305,6 +313,9 @@ const auditExtension = Prisma.defineExtension((client) => {
                         // Preparar datos de auditoría
                         const auditoriaData = {
                             id_usuario: currentUserId,
+                            // Campos de impersonación
+                            id_usuario_real: store.realUserId || null,
+                            id_usuario_impersonado: store.impersonatedUserId || null,
                             entidad_afectada: model,
                             id_entidad_afectada: idEntidadAfectada,
                             accion: operation.toUpperCase(),

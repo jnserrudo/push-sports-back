@@ -39,6 +39,10 @@ app.get('/', (req, res) => {
 // Importar Prisma ya extendido con auditoría
 const prisma = require('./src/config/prisma');
 const { auditMiddleware } = require('./src/services/auditService');
+const { impersonationMiddleware } = require('./src/middlewares/impersonationMiddleware');
+
+// Middleware de impersonación - procesa impersonación después de autenticación
+app.use('/api', impersonationMiddleware);
 
 // Middleware de auditoría - captura el usuario después de la autenticación
 // Las rutas individuales ya tienen authMiddleware, así que solo agregamos auditMiddleware
@@ -72,6 +76,7 @@ const eventRoutes = require('./src/routes/eventRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
 const rectificationRoutes = require('./src/routes/rectificationRoutes');
 const consultaRoutes = require('./src/routes/consultaRoutes');
+const impersonationRoutes = require('./src/routes/impersonationRoutes');
 
 // Rutas Públicas (B2C) — SIN autenticación JWT
 app.use('/api/public', publicRoutes);
@@ -106,6 +111,7 @@ app.use('/api/reportes', reportRoutes);
 app.use('/api/eventos', eventRoutes);
 app.use('/api/rectificaciones', rectificationRoutes);
 app.use('/api/consultas', consultaRoutes);
+app.use('/api/impersonation', impersonationRoutes);
 
 // Configuración de Swagger
 const fs = require('fs');

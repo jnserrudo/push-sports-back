@@ -280,6 +280,10 @@ model AuditoriaSistema {
   id_auditoria        String   @id @default(uuid()) @db.Uuid
   id_usuario          String   @db.Uuid
   
+  // Campos de impersonación
+  id_usuario_real         String?  @db.Uuid  // Admin que realiza la acción (cuando hay impersonación)
+  id_usuario_impersonado  String?  @db.Uuid  // Usuario siendo impersonado (cuando hay impersonación)
+  
   // Entidad afectada
   entidad_afectada    String   // 'Producto', 'Venta', 'Usuario', etc.
   id_entidad_afectada String?  @db.Uuid  // ID del registro afectado para filtrado
@@ -316,6 +320,8 @@ model AuditoriaSistema {
   @@index([entidad_afectada])
   @@index([id_entidad_afectada])
   @@index([id_usuario])
+  @@index([id_usuario_real])
+  @@index([id_usuario_impersonado])
   @@index([fecha_hora])
   @@index([id_comercio])
   @@index([id_producto])
