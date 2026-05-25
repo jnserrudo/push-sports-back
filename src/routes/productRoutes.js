@@ -84,38 +84,119 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
 // Crear un producto (SUPER_ADMIN / ADMIN_SUCURSAL)
 router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
+    console.log('========== CREACIÓN DE PRODUCTO ==========');
+    console.log('Usuario:', req.user ? { id: req.user.id_usuario, nombre: req.user.nombre, rol: req.user.id_rol } : 'No autenticado');
+    console.log('Body recibido:', req.body);
+
     try {
         const {
             nombre, descripcion,
             id_categoria, id_marca, id_proveedor,
             precio_venta_sugerido, precio_pushsport, costo_compra,
-            imagen_url, stock_minimo, stock_central
+            imagen_url, stock_minimo, stock_central, atributos
         } = req.body;
 
+        console.log('Campos extraídos:', {
+            nombre,
+            descripcion,
+            id_categoria,
+            id_marca,
+            id_proveedor,
+            precio_venta_sugerido,
+            precio_pushsport,
+            costo_compra,
+            imagen_url,
+            stock_minimo,
+            stock_central,
+            atributos
+        });
+
         if (!nombre || !id_categoria || !id_marca || !precio_venta_sugerido || !costo_compra) {
+            console.error('Error de validación: Faltan campos obligatorios');
+            console.error('Campos faltantes:', {
+                nombre: !nombre,
+                id_categoria: !id_categoria,
+                id_marca: !id_marca,
+                precio_venta_sugerido: !precio_venta_sugerido,
+                costo_compra: !costo_compra
+            });
             return res.status(400).json({ error: 'Faltan campos obligatorios: nombre, categoría, marca y precios.' });
         }
 
+        console.log('Validación exitosa, procediendo a crear producto...');
+
+        const data = {
+            nombre: nombre.toUpperCase(),
+            descripcion: descripcion || null,
+            id_categoria: parseInt(id_categoria),
+            id_marca: parseInt(id_marca),
+            id_proveedor: id_proveedor || null,
+            precio_venta_sugerido: parseFloat(precio_venta_sugerido),
+            precio_pushsport: precio_pushsport !== undefined ? parseFloat(precio_pushsport) : 0,
+            costo_compra: parseFloat(costo_compra),
+            imagen_url: imagen_url || null,
+            stock_minimo: stock_minimo ? parseInt(stock_minimo) : 5,
+            stock_central: stock_central !== undefined ? parseInt(stock_central) : 0,
+        };
+
+        if (atributos !== undefined) {
+            console.log('Procesando atributos:', atributos);
+            if (typeof atributos === 'string') {
+                try {
+                    data.atributos = JSON.parse(atributos);
+                    console.log('Atributos parseados correctamente:', data.atributos);
+                } catch (e) {
+                    console.error('Error al parsear atributos (string):', e);
+                    data.atributos = {};
+                }
+            } else if (typeof atributos === 'object' && atributos !== null) {
+                data.atributos = atributos;
+                console.log('Atributos recibidos como objeto:', data.atributos);
+            } else {
+                console.warn('Atributos en formato inválido, usando objeto vacío');
+                data.atributos = {};
+            }
+        }
+
+        console.log('Datos a insertar en DB:', data);
+
         const producto = await prisma.producto.create({
-            data: {
-                nombre: nombre.toUpperCase(),
-                descripcion: descripcion || null,
-                id_categoria: parseInt(id_categoria),
-                id_marca: parseInt(id_marca),
-                id_proveedor: id_proveedor || null,
-                precio_venta_sugerido: parseFloat(precio_venta_sugerido),
-                precio_pushsport: precio_pushsport !== undefined ? parseFloat(precio_pushsport) : 0,
-                costo_compra: parseFloat(costo_compra),
-                imagen_url: imagen_url || null,
-                stock_minimo: stock_minimo ? parseInt(stock_minimo) : 5,
-                stock_central: stock_central !== undefined ? parseInt(stock_central) : 0,
-            },
+            data,
             include: { marca: true, categoria: true, proveedor: true }
         });
+
+        console.log('Producto creado exitosamente:', {
+            id: producto.id_producto,
+            nombre: producto.nombre,
+            categoria: producto.categoria?.nombre,
+            marca: producto.marca?.nombre
+        });
+
         res.status(201).json(producto);
     } catch (error) {
-        console.error('Error POST /productos:', error);
-        res.status(500).json({ error: 'Error al crear producto', detail: error.message });
+        console.error('========== ERROR EN CREACIÓN DE PRODUCTO ==========');
+        console.error('Error completo:', error);
+        console.error('Mensaje de error:', error.message);
+        console.error('Stack trace:', error.stack);
+        console.error('Código de error:', error.code);
+        console.error('Meta:', error.meta);
+
+        if (error.code === 'P2002') {
+            console.error('Error de unicidad:', error.meta);
+            return res.status(400).json({ error: 'Ya existe un producto con esos datos únicos', detail: error.message });
+        }
+
+        if (error.code === 'P2003') {
+            console.error('Error de clave foránea:', error.meta);
+            return res.status(400).json({ error: 'Error de referencia: categoría, marca o proveedor no válido', detail: error.message });
+        }
+
+        if (error.code === 'P2025') {
+            console.error('Registro no encontrado:', error.meta);
+            return res.status(404).json({ error: 'Registro relacionado no encontrado', detail: error.message });
+        }
+
+        res.status(500).json({ error: 'Error al crear producto', detail: error.message, code: error.code });
     }
 });
 
