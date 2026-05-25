@@ -159,6 +159,7 @@ router.post('/productos/:id_producto/variantes/generar',
       const variantesExistentes = producto.variantes.map(v => JSON.stringify(v.atributos_valores));
       
       const nuevasVariantes = [];
+      const skusAjustados = [];
       
       for (const combo of combinaciones) {
         const comboString = JSON.stringify(combo);
@@ -168,20 +169,44 @@ router.post('/productos/:id_producto/variantes/generar',
           continue;
         }
         
-        // Crear nueva variante
-        const sku = generarSKU(combo, producto.nombre);
+        // Crear nueva variante con manejo de SKU duplicado
+        let sku = generarSKU(combo, producto.nombre);
+        let intentos = 0;
+        let varianteCreada = false;
         
-        const variante = await prisma.productoVariante.create({
-          data: {
-            id_producto,
-            atributos_valores: combo,
-            sku_variante: sku,
-            stock_central: 0,
-            activo: true
+        while (!varianteCreada && intentos < 10) {
+          try {
+            const variante = await prisma.productoVariante.create({
+              data: {
+                id_producto,
+                atributos_valores: combo,
+                sku_variante: sku,
+                stock_central: 0,
+                activo: true
+              }
+            });
+            
+            nuevasVariantes.push(variante);
+            varianteCreada = true;
+            
+            if (intentos > 0) {
+              skusAjustados.push({ original: generarSKU(combo, producto.nombre), ajustado: sku });
+            }
+          } catch (error) {
+            // Si es error de SKU duplicado (P2002), generar SKU alternativo
+            if (error.code === 'P2002' && error.meta?.target?.includes('sku_variante')) {
+              intentos++;
+              sku = `${generarSKU(combo, producto.nombre)}-${intentos}`;
+            } else {
+              // Otro tipo de error, lanzar
+              throw error;
+            }
           }
-        });
+        }
         
-        nuevasVariantes.push(variante);
+        if (!varianteCreada) {
+          console.error(`No se pudo crear variante después de 10 intentos: ${JSON.stringify(combo)}`);
+        }
       }
       
       // Auto-activar gestión por variantes si se crearon nuevas
@@ -193,11 +218,22 @@ router.post('/productos/:id_producto/variantes/generar',
         });
       }
 
+      // Preparar respuesta con warnings si hubo ajustes
+      const warnings = [];
+      if (skusAjustados.length > 0) {
+        warnings.push(`${skusAjustados.length} SKU${skusAjustados.length > 1 ? 's' : ''} fueron ajustados para evitar duplicados`);
+      }
+      
+      const variantesYaExistentes = combinaciones.length - nuevasVariantes.length;
+      
       res.status(201).json({
+        success: true,
         message: `Se generaron ${nuevasVariantes.length} nuevas variantes`,
         combinaciones_totales: combinaciones.length,
-        variantes_existentes: producto.variantes.length,
+        variantes_existentes: variantesYaExistentes,
         variantes_creadas: nuevasVariantes.length,
+        skus_ajustados: skusAjustados.length,
+        warnings: warnings,
         variantes: nuevasVariantes,
         usa_variantes: true
       });
