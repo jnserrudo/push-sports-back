@@ -437,6 +437,75 @@ const rectificationService = {
     });
   },
 
+  async getHistorialEjecutadas(id_comercio = null) {
+    // Buscar en la tabla de rectificaciones (que registra TODAS las rectificaciones)
+    const where = {};
+    if (id_comercio) {
+      where.venta_origen = {
+        id_comercio: id_comercio
+      };
+    }
+
+    console.log('🔍 Buscando rectificaciones con filtro:', JSON.stringify(where, null, 2));
+
+    const rectificaciones = await prisma.rectificacion.findMany({
+      where,
+      include: {
+        venta_origen: {
+          include: {
+            comercio: { select: { nombre: true } },
+            detalles: {
+              include: {
+                producto: { select: { nombre: true } }
+              }
+            }
+          }
+        },
+        venta_nueva: {
+          include: {
+            detalles: {
+              include: {
+                producto: { select: { nombre: true } }
+              }
+            }
+          }
+        },
+        tipo_rectificacion: { select: { nombre: true } },
+        usuario: { select: { nombre: true, apellido: true } }
+      },
+      orderBy: { fecha: 'desc' }
+    });
+
+    console.log(`✅ Encontradas ${rectificaciones.length} rectificaciones`);
+
+    return rectificaciones.map(r => ({
+      id_rectificacion: r.id_rectificacion,
+      fecha_rectificacion: r.fecha,
+      id_comercio: r.venta_origen?.id_comercio,
+      comercio_nombre: r.venta_origen?.comercio?.nombre || 'N/A',
+      id_venta_origen: r.id_venta_origen,
+      venta_origen_fecha: r.venta_origen?.fecha_hora,
+      venta_origen_total: r.venta_origen?.total_venta,
+      id_venta_nueva: r.id_venta_nueva,
+      total_venta: r.venta_nueva?.total_venta || 0,
+      metodo_pago: r.venta_nueva?.metodo_pago || r.venta_origen?.metodo_pago,
+      motivo_rectificacion: r.motivo_libre || r.tipo_rectificacion?.nombre || 'Sin motivo especificado',
+      tipo_rectificacion: r.tipo_rectificacion?.nombre,
+      usuario_nombre: r.usuario ? `${r.usuario.nombre} ${r.usuario.apellido}` : 'Sistema',
+      es_anulacion: !r.id_venta_nueva,
+      // Productos de la venta nueva (si existe) o de la venta original (si es anulación)
+      detalles: r.venta_nueva?.detalles?.map(d => ({
+        producto_nombre: d.producto?.nombre || 'Producto',
+        cantidad: d.cantidad,
+        precio_unitario: d.precio_unitario_cobrado
+      })) || r.venta_origen?.detalles?.map(d => ({
+        producto_nombre: d.producto?.nombre || 'Producto',
+        cantidad: d.cantidad,
+        precio_unitario: d.precio_unitario_cobrado
+      })) || []
+    }));
+  },
+
   // ─── TIPOS Y MOTIVOS DE RECTIFICACIÓN ─────────────────────────────────────
 
   async getTiposRectificacion() {

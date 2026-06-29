@@ -154,7 +154,7 @@ router.get('/solicitudes/pendientes', authMiddleware, roleMiddleware([1, 2]), as
     }
 });
 
-// Historial de solicitudes
+// Historial de solicitudes (DEPRECATED - ahora se usa /historial-ejecutadas)
 router.get('/solicitudes/historial', authMiddleware, async (req, res) => {
     try {
         const isGlobal = req.user.id_rol === 1 || (req.user.id_rol === 2 && !req.user.id_comercio_asignado);
@@ -164,6 +164,20 @@ router.get('/solicitudes/historial', authMiddleware, async (req, res) => {
         res.json(historial);
     } catch (error) {
         res.status(500).json({ error: 'Error obteniendo historial' });
+    }
+});
+
+// Historial de rectificaciones ejecutadas (ventas rectificadas)
+router.get('/historial-ejecutadas', authMiddleware, async (req, res) => {
+    try {
+        const isGlobal = req.user.id_rol === 1 || (req.user.id_rol === 2 && !req.user.id_comercio_asignado);
+        const id_comercio = isGlobal ? null : req.user.id_comercio_asignado;
+
+        const historial = await rectificationService.getHistorialEjecutadas(id_comercio);
+        res.json(historial);
+    } catch (error) {
+        console.error('Error obteniendo historial de rectificaciones:', error);
+        res.status(500).json({ error: 'Error obteniendo historial de rectificaciones' });
     }
 });
 
