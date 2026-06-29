@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
+const { Prisma } = require('@prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 
 router.get('/stats', authMiddleware, async (req, res) => {
@@ -59,6 +60,8 @@ router.get('/stats', authMiddleware, async (req, res) => {
             by: ['fecha_hora'],
             where: {
                 fecha_hora: { gte: sieteDiasAtras },
+                estado: { in: ['ACTIVA', 'LIQUIDADA'] },
+                tipo_venta: 'VENTA',
                 ...(targetSucursalId ? { id_comercio: targetSucursalId } : {})
             },
             _sum: { total_venta: true }
@@ -88,11 +91,164 @@ router.get('/stats', authMiddleware, async (req, res) => {
             });
         }
 
+        // 5. Total de Ventas del Período (últimos 30 días)
+        const treintaDiasAtras = new Date();
+        treintaDiasAtras.setDate(treintaDiasAtras.getDate() - 30);
+
+        const ventasPeriodoActual = await prisma.ventaCabecera.aggregate({
+            where: {
+                fecha_hora: { gte: treintaDiasAtras },
+                estado: { in: ['ACTIVA', 'LIQUIDADA'] },
+                tipo_venta: 'VENTA',
+                ...(targetSucursalId ? { id_comercio: targetSucursalId } : {})
+            },
+            _sum: { total_venta: true },
+            _count: true
+        });
+
+        // Período anterior (30 días antes) para comparación
+        const sesentaDiasAtras = new Date();
+        sesentaDiasAtras.setDate(sesentaDiasAtras.getDate() - 60);
+
+        const ventasPeriodoAnterior = await prisma.ventaCabecera.aggregate({
+            where: {
+                fecha_hora: { gte: sesentaDiasAtras, lt: treintaDiasAtras },
+                estado: { in: ['ACTIVA', 'LIQUIDADA'] },
+                tipo_venta: 'VENTA',
+                ...(targetSucursalId ? { id_comercio: targetSucursalId } : {})
+            },
+            _sum: { total_venta: true }
+        });
+
+        const totalVentasActual = Number(ventasPeriodoActual._sum.total_venta || 0);
+        const totalVentasAnterior = Number(ventasPeriodoAnterior._sum.total_venta || 0);
+        const crecimientoVentas = totalVentasAnterior > 0 
+            ? Math.round(((totalVentasActual - totalVentasAnterior) / totalVentasAnterior) * 100)
+            : 0;
+
+        // 5b. Total de Liquidaciones (Ingresos ya cobrados)
+        const liquidacionesTotales = await prisma.liquidacion.aggregate({
+            where: {
+                fecha_cierre: { gte: treintaDiasAtras },
+                ...(targetSucursalId ? { id_comercio: targetSucursalId } : {})
+            },
+            _sum: { monto_recibido: true },
+            _count: true
+        });
+
+        const totalIngresos = Number(liquidacionesTotales._sum.monto_recibido || 0);
+
+        console.log('📊 Dashboard Stats:', {
+            totalVentasActual,
+            cantidadVentas: ventasPeriodoActual._count,
+            crecimientoVentas,
+            totalCaja: targetSucursalId ? totalCaja?.saldo_acumulado_mili : totalCaja?._sum?.saldo_acumulado_mili,
+            totalIngresos,
+            cantidadLiquidaciones: liquidacionesTotales._count
+        });
+
+        // 6. Productos Más Vendidos (Top 5) - Optimizado con SQL raw
+        const productosTopRaw = targetSucursalId 
+            ? await prisma.$queryRaw`
+                SELECT 
+                    vd.id_producto,
+                    p.nombre,
+                    SUM(vd.cantidad) as cantidad,
+                    SUM(vd.cantidad * vd.precio_unitario_cobrado) as total
+                FROM "VENTAS_DETALLE" vd
+                INNER JOIN "VENTAS_CABECERA" vc ON vd.id_venta = vc.id_venta
+                INNER JOIN "PRODUCTOS" p ON vd.id_producto = p.id_producto
+                WHERE vc.fecha_hora >= ${treintaDiasAtras}
+                    AND vc.estado IN ('ACTIVA', 'LIQUIDADA')
+                    AND vc.tipo_venta = 'VENTA'
+                    AND vc.id_comercio = ${targetSucursalId}
+                GROUP BY vd.id_producto, p.nombre
+                ORDER BY cantidad DESC
+                LIMIT 5
+            `
+            : await prisma.$queryRaw`
+                SELECT 
+                    vd.id_producto,
+                    p.nombre,
+                    SUM(vd.cantidad) as cantidad,
+                    SUM(vd.cantidad * vd.precio_unitario_cobrado) as total
+                FROM "VENTAS_DETALLE" vd
+                INNER JOIN "VENTAS_CABECERA" vc ON vd.id_venta = vc.id_venta
+                INNER JOIN "PRODUCTOS" p ON vd.id_producto = p.id_producto
+                WHERE vc.fecha_hora >= ${treintaDiasAtras}
+                    AND vc.estado IN ('ACTIVA', 'LIQUIDADA')
+                    AND vc.tipo_venta = 'VENTA'
+                GROUP BY vd.id_producto, p.nombre
+                ORDER BY cantidad DESC
+                LIMIT 5
+            `;
+
+        const productosTopConNombres = productosTopRaw.map(p => ({
+            nombre: p.nombre,
+            cantidad: Number(p.cantidad),
+            total: Number(p.total || 0)
+        }));
+
+        console.log('🏆 Productos Top:', productosTopConNombres.length, productosTopConNombres);
+
+        // 7. Ventas por Método de Pago
+        const ventasPorMetodo = await prisma.ventaCabecera.groupBy({
+            by: ['metodo_pago'],
+            where: {
+                fecha_hora: { gte: treintaDiasAtras },
+                estado: { in: ['ACTIVA', 'LIQUIDADA'] },
+                tipo_venta: 'VENTA',
+                ...(targetSucursalId ? { id_comercio: targetSucursalId } : {})
+            },
+            _sum: { total_venta: true },
+            _count: true
+        });
+
+        const metodosPago = ventasPorMetodo.map(v => ({
+            metodo: v.metodo_pago,
+            total: Number(v._sum.total_venta || 0),
+            cantidad: v._count
+        }));
+
+        console.log('💳 Métodos de Pago:', metodosPago.length, metodosPago);
+
+        // 8. Rendimiento por Sucursal (Solo para SuperAdmin) - Optimizado
+        let rendimientoSucursales = [];
+        if (isSuperAdmin || isGlobalSupervisor) {
+            const sucursalesRaw = await prisma.$queryRaw`
+                SELECT 
+                    vc.id_comercio,
+                    c.nombre,
+                    SUM(vc.total_venta) as total,
+                    COUNT(*) as cantidad
+                FROM "VENTAS_CABECERA" vc
+                INNER JOIN "COMERCIOS" c ON vc.id_comercio = c.id_comercio
+                WHERE vc.fecha_hora >= ${treintaDiasAtras}
+                    AND vc.estado IN ('ACTIVA', 'LIQUIDADA')
+                    AND vc.tipo_venta = 'VENTA'
+                GROUP BY vc.id_comercio, c.nombre
+                ORDER BY total DESC
+                LIMIT 5
+            `;
+
+            rendimientoSucursales = sucursalesRaw.map(s => ({
+                id_comercio: s.id_comercio,
+                nombre: s.nombre,
+                total: Number(s.total || 0),
+                cantidad: Number(s.cantidad)
+            }));
+        }
+
         res.json({
             metrics: {
                 totalCaja: targetSucursalId ? Number(totalCaja?.saldo_acumulado_mili || 0) : Number(totalCaja?._sum?.saldo_acumulado_mili || 0),
                 productosCount,
-                usuariosCount
+                usuariosCount,
+                totalVentas: totalVentasActual,
+                cantidadVentas: ventasPeriodoActual._count,
+                crecimientoVentas: crecimientoVentas,
+                totalIngresos: totalIngresos,
+                cantidadLiquidaciones: liquidacionesTotales._count
             },
             stockCritico: stockCritico.map(s => ({
                 nombre: s.producto.nombre,
@@ -103,7 +259,10 @@ router.get('/stats', authMiddleware, async (req, res) => {
                 id_comercio: s.id_comercio,
                 nombre: s.nombre,
                 saldo_acumulado_mili: Number(s.saldo_acumulado_mili)
-            }))
+            })),
+            productosTop: productosTopConNombres,
+            metodosPago: metodosPago,
+            rendimientoSucursales: rendimientoSucursales
         });
 
     } catch (error) {
