@@ -10,18 +10,90 @@ const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddlewar
 // Rectificar venta directamente (solo roles 1 y 2)
 router.post('/ventas', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     try {
-        const { id_venta, nuevos_detalles, metodo_pago, motivo } = req.body;
+        const {
+            id_venta,
+            nuevos_detalles,
+            metodo_pago,
+            motivo,
+            id_tipo_rectificacion,
+            motivo_libre,
+            observaciones,
+            es_anulacion_total
+        } = req.body;
+
         if (!id_venta || !motivo) return res.status(400).json({ error: 'Faltan id_venta y/o motivo.' });
 
         const resultado = await rectificationService.rectificarVenta({
-            id_venta, nuevos_detalles, metodo_pago, motivo,
-            id_usuario: req.user.id_usuario
+            id_venta,
+            nuevos_detalles,
+            metodo_pago,
+            motivo,
+            id_usuario: req.user.id_usuario,
+            id_tipo_rectificacion,
+            motivo_libre,
+            observaciones,
+            es_anulacion_total
         });
 
-        res.status(201).json({ message: 'Venta rectificada correctamente', data: resultado });
+        res.status(201).json({ message: es_anulacion_total ? 'Venta anulada correctamente' : 'Venta rectificada correctamente', data: resultado });
     } catch (error) {
         console.error('Error rectificando venta:', error);
         res.status(400).json({ error: error.message });
+    }
+});
+
+// Obtener ventas disponibles para rectificación
+router.get('/ventas', authMiddleware, async (req, res) => {
+    try {
+        const ventas = await rectificationService.getVentasParaRectificar(req.user);
+        res.json(ventas);
+    } catch (error) {
+        console.error('Error obteniendo ventas para rectificar:', error);
+        res.status(500).json({ error: 'Error interno.' });
+    }
+});
+
+// Tipos de rectificación
+router.get('/tipos', authMiddleware, async (req, res) => {
+    try {
+        const tipos = await rectificationService.getTiposRectificacion();
+        res.json(tipos);
+    } catch (error) {
+        console.error('Error obteniendo tipos de rectificación:', error);
+        res.status(500).json({ error: 'Error interno.' });
+    }
+});
+
+// Historial de rectificaciones de una venta
+router.get('/ventas/:id/historial', authMiddleware, async (req, res) => {
+    try {
+        const historial = await rectificationService.getHistorialVenta(req.params.id);
+        res.json(historial);
+    } catch (error) {
+        console.error('Error obteniendo historial de rectificaciones:', error);
+        res.status(500).json({ error: 'Error interno.' });
+    }
+});
+
+// Cadena completa de ventas (origen + rectificaciones)
+router.get('/ventas/:id/cadena', authMiddleware, async (req, res) => {
+    try {
+        const cadena = await rectificationService.getCadenaVentas(req.params.id);
+        res.json(cadena);
+    } catch (error) {
+        console.error('Error obteniendo cadena de ventas:', error);
+        res.status(500).json({ error: 'Error interno.' });
+    }
+});
+
+// Seed inicial de tipos y motivos (solo SuperAdmin)
+router.post('/seed', authMiddleware, roleMiddleware([1]), async (req, res) => {
+    try {
+        const resultado = await rectificationService.seedTiposYMotivos();
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error seedeando tipos y motivos:', error);
+        res.status(500).json({ error: 'Error interno.' });
     }
 });
 

@@ -4,14 +4,21 @@ const liquidationService = {
   /**
    * Preview: obtiene un resumen de todo lo pendiente de liquidar para un comercio.
    * Incluye: ventas pendientes, desglose por método de pago, devoluciones y neto.
+   * Si se pasa id_ventas, solo considera esas ventas (deben estar pendientes).
    */
-  async getPreviewData(id_comercio) {
-    // 1. Ventas pendientes (sin liquidar)
+  async getPreviewData(id_comercio, id_ventas = null) {
+    // 1. Ventas pendientes (sin liquidar y activas)
+    const whereBase = {
+      id_comercio,
+      id_liquidacion: null,
+      estado: 'ACTIVA'
+    };
+    if (id_ventas && Array.isArray(id_ventas) && id_ventas.length > 0) {
+      whereBase.id_venta = { in: id_ventas };
+    }
+
     const ventasPendientes = await prisma.ventaCabecera.findMany({
-      where: {
-        id_comercio,
-        id_liquidacion: null,
-      },
+      where: whereBase,
       include: {
         detalles: {
             include: {
@@ -92,7 +99,14 @@ const liquidationService = {
         }
 
         if (!desgloseMap[nombre]) {
-          desgloseMap[nombre] = { nombre, cantidad: 0, total_bruto: 0, total_neto: 0 };
+          desgloseMap[nombre] = { 
+            nombre, 
+            cantidad: 0, 
+            total_bruto: 0, 
+            total_neto: 0,
+            precio_unitario_publico: parseFloat(detalle.precio_unitario_cobrado) || 0,
+            precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0
+          };
         }
         desgloseMap[nombre].cantidad += detalle.cantidad;
         desgloseMap[nombre].total_bruto += parseFloat(detalle.precio_unitario_cobrado) * detalle.cantidad;
@@ -159,8 +173,9 @@ const liquidationService = {
   /**
    * Genera una liquidación para un comercio agrupando todas las ventas no liquidadas.
    * Ahora acepta monto_recibido opcional para registrar diferencias.
+   * Si se pasa id_ventas, solo liquidar esas ventas activas y no liquidadas.
    */
-  async generateLiquidation({ id_comercio, monto_recibido, observacion, id_usuario }) {
+  async generateLiquidation({ id_comercio, monto_recibido, observacion, id_usuario, id_ventas = null }) {
     // Prevenir timeouts largos y optimizar la auditoría fijando el usuario
     if (id_usuario) {
       const { setAuditUser } = require('./auditService');
@@ -168,12 +183,18 @@ const liquidationService = {
     }
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Buscar todas las ventas cabecera no liquidadas de este comercio
+      // 1. Buscar ventas a liquidar
+      const whereBase = {
+        id_comercio,
+        id_liquidacion: null,
+        estado: 'ACTIVA'
+      };
+      if (id_ventas && Array.isArray(id_ventas) && id_ventas.length > 0) {
+        whereBase.id_venta = { in: id_ventas };
+      }
+
       const ventasPendientes = await tx.ventaCabecera.findMany({
-        where: {
-          id_comercio,
-          id_liquidacion: null,
-        },
+        where: whereBase,
         include: {
           detalles: {
               include: {
@@ -190,6 +211,12 @@ const liquidationService = {
 
       if (ventasPendientes.length === 0) {
         throw new Error('No hay ventas pendientes para liquidar en este comercio.');
+      }
+
+      // Validar que todas las ventas seleccionadas estén activas y no liquidadas
+      for (const v of ventasPendientes) {
+        if (v.estado !== 'ACTIVA') throw new Error(`La venta ${v.id_venta} no está activa y no puede liquidarse.`);
+        if (v.id_liquidacion) throw new Error(`La venta ${v.id_venta} ya fue liquidada.`);
       }
 
       // 2. Calcular los totales
@@ -232,7 +259,14 @@ const liquidationService = {
           }
 
           if (!desgloseMap[nombre]) {
-            desgloseMap[nombre] = { nombre, cantidad: 0, total_bruto: 0, total_neto: 0 };
+            desgloseMap[nombre] = { 
+              nombre, 
+              cantidad: 0, 
+              total_bruto: 0, 
+              total_neto: 0,
+              precio_unitario_publico: parseFloat(detalle.precio_unitario_cobrado) || 0,
+              precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0
+            };
           }
           desgloseMap[nombre].cantidad += detalle.cantidad;
           desgloseMap[nombre].total_bruto += parseFloat(detalle.precio_unitario_cobrado) * detalle.cantidad;
@@ -280,11 +314,14 @@ const liquidationService = {
         },
       });
 
-      // 7. Actualizar todas las ventas pendientes
+      // 7. Actualizar todas las ventas liquidadas
       const ventasIds = ventasPendientes.map(v => v.id_venta);
       await tx.ventaCabecera.updateMany({
         where: { id_venta: { in: ventasIds } },
-        data: { id_liquidacion: liquidacion.id_liquidacion },
+        data: {
+          id_liquidacion: liquidacion.id_liquidacion,
+          estado: 'LIQUIDADA'
+        },
       });
 
       // 8. Resetear saldo a 0

@@ -9,6 +9,8 @@ const { notifyCommerceManagers } = require('../services/notificationService');
 // Endpoint para registrar una venta con múltiples productos
 router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => {
     try {
+        console.log('[DEBUG salesRoutes] Body recibido:', JSON.stringify(req.body, null, 2));
+        
         const { id_comercio, detalles, metodo_pago } = req.body;
         const id_usuario = req.user.id_usuario; // Usar ID del token
 
@@ -124,7 +126,8 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                      id_comercio,
                      id_usuario,
                      total_venta: total_venta_cabecera,
-                     metodo_pago
+                     metodo_pago,
+                     estado: 'ACTIVA'
                  }
              });
 

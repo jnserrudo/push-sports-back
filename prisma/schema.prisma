@@ -36,7 +36,9 @@ model Usuario {
   movimientos_autorizados MovimientoStock[]
   auditorias_rastreadas AuditoriaSistema[]
   devoluciones         Devolucion[]
+  rectificaciones      Rectificacion[]
   password_reset_tokens PasswordResetToken[]
+  reportes_entrega     ReporteEntrega[]
 
   @@map("USUARIOS")
 }
@@ -92,6 +94,7 @@ model Producto {
   movimientos           MovimientoStock[]
   devoluciones          Devolucion[]
   consultas_items       ConsultaPedidoItem[]
+  reportes_entrega_detalle ReporteEntregaDetalle[]
 
   @@map("PRODUCTOS")
 }
@@ -148,6 +151,7 @@ model Comercio {
   movimientos_stock    MovimientoStock[]
   devoluciones         Devolucion[]
   consultas_pedidos    ConsultaPedido[]
+  reportes_entrega     ReporteEntrega[]
 
   @@map("COMERCIOS")
 }
@@ -217,6 +221,42 @@ model MovimientoStock {
   @@map("MOVIMIENTOS_STOCK")
 }
 
+model TipoRectificacion {
+  id_tipo        String    @id @default(uuid()) @db.Uuid
+  codigo         String    @unique
+  nombre         String
+  descripcion    String?   @db.Text
+  es_otro        Boolean   @default(false)
+  activo         Boolean   @default(true)
+  fecha_creacion DateTime  @default(now())
+
+  rectificaciones Rectificacion[]
+
+  @@map("TIPOS_RECTIFICACION")
+}
+
+model Rectificacion {
+  id_rectificacion   String    @id @default(uuid()) @db.Uuid
+  id_venta_origen    String    @db.Uuid
+  id_venta_nueva     String?   @db.Uuid  @unique
+  id_usuario         String    @db.Uuid
+  id_tipo_rectificacion String? @db.Uuid
+  motivo_libre       String?   @db.Text
+  observaciones      String?   @db.Text
+  detalle_cambios    String?   @db.Text  // JSON con diferencias
+  fecha              DateTime  @default(now())
+
+  venta_origen       VentaCabecera @relation("RectificacionOrigen", fields: [id_venta_origen], references: [id_venta])
+  venta_nueva        VentaCabecera? @relation("RectificacionVentaNueva", fields: [id_venta_nueva], references: [id_venta])
+  usuario            Usuario @relation(fields: [id_usuario], references: [id_usuario])
+  tipo_rectificacion TipoRectificacion? @relation(fields: [id_tipo_rectificacion], references: [id_tipo])
+
+  @@index([id_venta_origen])
+  @@index([id_venta_nueva])
+  @@index([id_usuario])
+  @@map("RECTIFICACIONES")
+}
+
 model VentaCabecera {
   id_venta         String   @id @default(uuid()) @db.Uuid
   id_comercio      String   @db.Uuid
@@ -226,7 +266,8 @@ model VentaCabecera {
   metodo_pago      String
   fecha_hora       DateTime @default(now())
 
-  // Campos de rectificaciÃ³n
+  // Campos de estado y rectificaciÃ³n
+  estado                String   @default("ACTIVA") // ACTIVA | RECTIFICADA | ANULADA | LIQUIDADA
   tipo_venta            String   @default("VENTA")  // VENTA | ANULACION | RECTIFICACION
   id_venta_origen       String?  @db.Uuid
   motivo_rectificacion  String?  @db.Text
@@ -236,10 +277,15 @@ model VentaCabecera {
   liquidacion      Liquidacion? @relation(fields: [id_liquidacion], references: [id_liquidacion])
   detalles         VentaDetalle[]
   devoluciones     Devolucion[]
-  venta_origen     VentaCabecera?  @relation("RectificacionOrigen", fields: [id_venta_origen], references: [id_venta])
-  rectificaciones  VentaCabecera[] @relation("RectificacionOrigen")
+  venta_origen     VentaCabecera?  @relation("VentaOrigen", fields: [id_venta_origen], references: [id_venta])
+  ventas_hijas     VentaCabecera[] @relation("VentaOrigen")
+  rectificaciones  Rectificacion[] @relation("RectificacionOrigen")
   consultas_origen ConsultaPedido[]
+  rectificacion_registro Rectificacion? @relation("RectificacionVentaNueva")
 
+  @@index([estado])
+  @@index([id_liquidacion])
+  @@index([id_venta_origen])
   @@map("VENTAS_CABECERA")
 }
 
@@ -274,6 +320,42 @@ model Liquidacion {
   ventas             VentaCabecera[]
 
   @@map("LIQUIDACIONES")
+}
+
+model ReporteEntrega {
+  id_reporte       String   @id @default(uuid()) @db.Uuid
+  id_comercio      String   @db.Uuid
+  id_usuario       String   @db.Uuid
+  numero_reporte   String   @unique
+  fecha_emision    DateTime @default(now())
+  observacion      String?  @db.Text
+  total_unidades   Int      @default(0)
+
+  comercio         Comercio @relation(fields: [id_comercio], references: [id_comercio])
+  usuario          Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+  detalles         ReporteEntregaDetalle[]
+
+  @@map("REPORTES_ENTREGA")
+  @@index([id_comercio])
+  @@index([fecha_emision])
+}
+
+model ReporteEntregaDetalle {
+  id_detalle        String   @id @default(uuid()) @db.Uuid
+  id_reporte        String   @db.Uuid
+  id_producto       String   @db.Uuid
+  id_variante       String?  @db.Uuid
+  cantidad          Int
+  precio_pushsport  Decimal  @db.Decimal(10, 2)
+  precio_base       Decimal  @db.Decimal(10, 2)
+  precio_venta      Decimal  @db.Decimal(10, 2)
+
+  reporte           ReporteEntrega @relation(fields: [id_reporte], references: [id_reporte], onDelete: Cascade)
+  producto          Producto       @relation(fields: [id_producto], references: [id_producto])
+  variante          ProductoVariante? @relation(fields: [id_variante], references: [id_variante])
+
+  @@map("REPORTES_ENTREGA_DETALLE")
+  @@index([id_reporte])
 }
 
 model AuditoriaSistema {
@@ -417,6 +499,7 @@ model ProductoVariante {
   movimientos          MovimientoStockVariante[]
   ventas_detalle       VentaDetalleVariante[]
   consultas_items      ConsultaPedidoItem[]
+  reportes_entrega_detalle ReporteEntregaDetalle[]
 
   @@map("PRODUCTOS_VARIANTES")
 }

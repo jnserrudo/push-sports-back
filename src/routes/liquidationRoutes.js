@@ -7,7 +7,16 @@ const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddlewar
 router.get('/:id_comercio/preview', authMiddleware, roleMiddleware([1]), async (req, res) => {
     try {
         const { id_comercio } = req.params;
-        const preview = await liquidationService.getPreviewData(id_comercio);
+        const { id_ventas } = req.query;
+        let ventasArray = null;
+        if (id_ventas) {
+            try {
+                ventasArray = JSON.parse(id_ventas);
+            } catch (e) {
+                return res.status(400).json({ error: 'id_ventas debe ser un array JSON válido.' });
+            }
+        }
+        const preview = await liquidationService.getPreviewData(id_comercio, ventasArray);
         res.json(preview);
     } catch (error) {
         console.error('Error al obtener preview de liquidación:', error);
@@ -18,7 +27,7 @@ router.get('/:id_comercio/preview', authMiddleware, roleMiddleware([1]), async (
 // Generar una liquidación para un comercio (ADMIN o Supervisor de ESE comercio)
 router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     try {
-        const { id_comercio, monto_recibido, observacion } = req.body;
+        const { id_comercio, monto_recibido, observacion, id_ventas } = req.body;
 
         if (!id_comercio) {
             return res.status(400).json({ error: 'Falta id_comercio' });
@@ -33,7 +42,8 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             id_comercio,
             monto_recibido,
             observacion,
-            id_usuario: req.user.id_usuario
+            id_usuario: req.user.id_usuario,
+            id_ventas
         });
 
         res.status(201).json({ message: 'Liquidación generada', data: liquidacion });
