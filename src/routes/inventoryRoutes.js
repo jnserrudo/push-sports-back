@@ -58,46 +58,84 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
 
         const { soloConStock } = req.query;
 
-        // Obtener TODOS los productos activos del inventario
-        const inventario = await prisma.inventarioComercio.findMany({
-            where: { 
-                id_comercio, 
-                producto: { activo: true }
-            },
-            include: { 
-                producto: {
-                    include: {
-                        variantes: {
-                            where: { activo: true },
-                            select: {
-                                id_variante: true,
-                                sku_variante: true,
-                                atributos_valores: true
+        // Obtener TODOS los productos activos (para devolver también los que no tienen stock en este comercio)
+        const [inventario, productosActivos] = await Promise.all([
+            prisma.inventarioComercio.findMany({
+                where: { 
+                    id_comercio, 
+                    producto: { activo: true }
+                },
+                include: { 
+                    producto: {
+                        include: {
+                            variantes: {
+                                where: { activo: true },
+                                select: {
+                                    id_variante: true,
+                                    sku_variante: true,
+                                    atributos_valores: true
+                                }
                             }
                         }
-                    }
-                },
-                comercio: {
-                    select: { nombre: true }
-                },
-                variantes: {
-                    include: {
-                        variante: {
-                            select: {
-                                id_variante: true,
-                                sku_variante: true,
-                                atributos_valores: true
+                    },
+                    comercio: {
+                        select: { nombre: true }
+                    },
+                    variantes: {
+                        include: {
+                            variante: {
+                                select: {
+                                    id_variante: true,
+                                    sku_variante: true,
+                                    atributos_valores: true
+                                }
                             }
                         }
                     }
                 }
-            }
+            }),
+            prisma.producto.findMany({
+                where: { activo: true },
+                include: {
+                    marca: true,
+                    variantes: {
+                        where: { activo: true },
+                        select: {
+                            id_variante: true,
+                            sku_variante: true,
+                            atributos_valores: true
+                        }
+                    }
+                }
+            })
+        ]);
+
+        // Mapear inventario por id_producto para combinar rápido
+        const inventarioPorProducto = new Map(inventario.map(item => [item.id_producto, item]));
+
+        // Combinar: si el producto tiene inventario, usarlo; si no, crear un item virtual con stock 0
+        let inventarioCompleto = productosActivos.map(producto => {
+            const item = inventarioPorProducto.get(producto.id_producto);
+            if (item) return { ...item, sucursal_nombre: item.comercio?.nombre || 'Desconocido' };
+            return {
+                id_inventario: null,
+                id_comercio,
+                id_producto: producto.id_producto,
+                cantidad_actual: 0,
+                stock_minimo_alerta: 0,
+                comision_pactada_porcentaje: 0,
+                usa_desglose_variantes: false,
+                producto,
+                comercio: null,
+                variantes: [],
+                sucursal_nombre: 'Desconocido'
+            };
         });
 
         // Filtrar solo si se solicita explícitamente (ej: desde el POS)
-        let inventarioFinal = inventario;
+        let inventarioFinal = inventarioCompleto;
         if (soloConStock === 'true') {
-            inventarioFinal = inventario.filter(item => {
+            inventarioFinal = inventarioCompleto.filter(item => {
                 if (item.cantidad_actual > 0) return true;
                 if (item.usa_desglose_variantes && item.variantes && item.variantes.length > 0) {
                     const stockVariantes = item.variantes.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0);
@@ -107,14 +145,8 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
             });
         }
 
-        // Mapeamos el nombre de la sucursal por conveniencia pero mantenemos el objeto comercio
-        const inventarioFinalResponse = inventarioFinal.map(item => ({
-            ...item,
-            sucursal_nombre: item.comercio?.nombre || 'Desconocido'
-        }));
-
-        console.log(`[DEBUG] Inventario para comercio ${id_comercio}: ${inventario.length} items totales, devueltos ${inventarioFinal.length}`);
-        res.json(inventarioFinalResponse);
+        console.log(`[DEBUG] Inventario para comercio ${id_comercio}: ${inventario.length} items con registro, ${productosActivos.length} productos activos, devueltos ${inventarioFinal.length}`);
+        res.json(inventarioFinal);
     } catch (error) {
         console.error('Error al obtener inventario:', error);
         res.status(500).json({ error: 'Error al obtener inventario' });
