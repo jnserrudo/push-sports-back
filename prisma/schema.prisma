@@ -74,6 +74,7 @@ model Producto {
   id_categoria          Int
   id_marca              Int
   id_proveedor          String?   @db.Uuid
+  id_codigo_producto    String?   @db.Uuid
   precio_venta_sugerido Decimal   @db.Decimal(10, 2)
   precio_pushsport      Decimal   @default(0) @db.Decimal(10, 2)
   costo_compra          Decimal   @db.Decimal(10, 2)
@@ -87,6 +88,7 @@ model Producto {
   categoria             Categoria  @relation(fields: [id_categoria], references: [id_categoria])
   marca                 Marca      @relation(fields: [id_marca], references: [id_marca])
   proveedor             Proveedor? @relation(fields: [id_proveedor], references: [id_proveedor])
+  codigo_producto       CodigoProducto? @relation(fields: [id_codigo_producto], references: [id_codigo])
 
   inventarios           InventarioComercio[]
   variantes             ProductoVariante[]
@@ -107,6 +109,16 @@ model Categoria {
   productos    Producto[]
 
   @@map("CATEGORIAS")
+}
+
+model CodigoProducto {
+  id_codigo   String     @id @default(uuid()) @db.Uuid
+  codigo      String     @unique
+  descripcion String?    @db.Text
+
+  productos   Producto[]
+
+  @@map("CODIGOS_PRODUCTO")
 }
 
 model Marca {

@@ -22,7 +22,7 @@ const liquidationService = {
       include: {
         detalles: {
             include: {
-                producto: { select: { nombre: true, usa_variantes: true } },
+                producto: { select: { nombre: true, usa_variantes: true, codigo_relacion: { select: { codigo: true } } } },
                 variantes: {
                     include: {
                         variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -78,6 +78,7 @@ const liquidationService = {
     for (const venta of ventasPendientes) {
       for (const detalle of venta.detalles) {
         let nombre = detalle.producto?.nombre || 'Producto Desconocido';
+        let codigo = detalle.producto?.codigo_relacion?.codigo || '';
         
         // Agregar info de variante — verificar datos reales en lugar del flag
         if (detalle.variantes && detalle.variantes.length > 0) {
@@ -101,6 +102,7 @@ const liquidationService = {
         if (!desgloseMap[nombre]) {
           desgloseMap[nombre] = { 
             nombre, 
+            codigo,
             cantidad: 0, 
             total_bruto: 0, 
             total_neto: 0,
@@ -198,7 +200,7 @@ const liquidationService = {
         include: {
           detalles: {
               include: {
-                  producto: { select: { nombre: true, usa_variantes: true } },
+                  producto: { select: { nombre: true, usa_variantes: true, codigo_relacion: { select: { codigo: true } } } },
                   variantes: {
                       include: {
                           variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -240,6 +242,7 @@ const liquidationService = {
       for (const venta of ventasPendientes) {
         for (const detalle of venta.detalles) {
           let nombre = detalle.producto?.nombre || 'Producto Desconocido';
+          let codigo = detalle.producto?.codigo_relacion?.codigo || '';
           
           if (detalle.variantes && detalle.variantes.length > 0) {
             const varRel = detalle.variantes[0];
@@ -261,6 +264,7 @@ const liquidationService = {
           if (!desgloseMap[nombre]) {
             desgloseMap[nombre] = { 
               nombre, 
+              codigo,
               cantidad: 0, 
               total_bruto: 0, 
               total_neto: 0,

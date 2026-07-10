@@ -15,6 +15,7 @@ router.get('/', authMiddleware, async (req, res) => {
                 marca: true, 
                 categoria: true, 
                 proveedor: true,
+                codigo_producto: true,
                 inventarios: {
                     select: { cantidad_actual: true }
                 },
@@ -56,6 +57,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
                 marca: true, 
                 categoria: true, 
                 proveedor: true,
+                codigo_producto: true,
                 inventarios: { select: { cantidad_actual: true } },
                 variantes: {
                     select: { 
@@ -91,7 +93,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     try {
         const {
             nombre, descripcion,
-            id_categoria, id_marca, id_proveedor,
+            id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
             imagen_url, stock_minimo, stock_central, atributos
         } = req.body;
@@ -131,6 +133,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             id_categoria: parseInt(id_categoria),
             id_marca: parseInt(id_marca),
             id_proveedor: id_proveedor || null,
+            id_codigo_producto: id_codigo_producto || null,
             precio_venta_sugerido: parseFloat(precio_venta_sugerido),
             precio_pushsport: precio_pushsport !== undefined ? parseFloat(precio_pushsport) : 0,
             costo_compra: parseFloat(costo_compra),
@@ -365,7 +368,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const { id } = req.params;
         const {
             nombre, descripcion,
-            id_categoria, id_marca, id_proveedor,
+            id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
             imagen_url, stock_minimo, stock_central, activo, atributos
         } = req.body;
@@ -376,6 +379,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         if (id_categoria !== undefined)          data.id_categoria = parseInt(id_categoria);
         if (id_marca !== undefined)              data.id_marca = parseInt(id_marca);
         if (id_proveedor !== undefined)          data.id_proveedor = id_proveedor || null;
+        if (id_codigo_producto !== undefined)    data.id_codigo_producto = id_codigo_producto || null;
         if (precio_venta_sugerido !== undefined) data.precio_venta_sugerido = parseFloat(precio_venta_sugerido);
         if (precio_pushsport !== undefined)      data.precio_pushsport = parseFloat(precio_pushsport);
         if (costo_compra !== undefined)          data.costo_compra = parseFloat(costo_compra);

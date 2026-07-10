@@ -46,7 +46,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
 
             const detallesData = await Promise.all(detalles.map(async (d) => {
                 const { id_producto, id_variante, cantidad, precio_pushsport, precio_base, precio_venta } = d;
-                if (!id_producto || !cantidad) {
+                if (!id_producto || cantidad === undefined || cantidad === null) {
                     throw new Error('Detalle inválido: falta id_producto o cantidad');
                 }
 

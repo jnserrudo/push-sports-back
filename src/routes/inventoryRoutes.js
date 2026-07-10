@@ -68,6 +68,7 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                 include: { 
                     producto: {
                         include: {
+                            codigo_producto: true,
                             variantes: {
                                 where: { activo: true },
                                 select: {
@@ -98,6 +99,7 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                 where: { activo: true },
                 include: {
                     marca: true,
+                    codigo_producto: true,
                     variantes: {
                         where: { activo: true },
                         select: {
