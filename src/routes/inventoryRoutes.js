@@ -17,7 +17,7 @@ router.get('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
                     include: {
                         variantes: {
                             where: { activo: true },
-                            select: { id_variante: true, sku_variante: true, atributos_valores: true }
+                            select: { id_variante: true, sku_variante: true, codigo_barras: true, atributos_valores: true }
                         }
                     }
                 },
@@ -26,7 +26,7 @@ router.get('/', authMiddleware, roleMiddleware([1]), async (req, res) => {
                 },
                 variantes: {
                     include: {
-                        variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
+                        variante: { select: { id_variante: true, sku_variante: true, codigo_barras: true, atributos_valores: true } }
                     }
                 }
             }
@@ -74,6 +74,7 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                                 select: {
                                     id_variante: true,
                                     sku_variante: true,
+                                    codigo_barras: true,
                                     atributos_valores: true
                                 }
                             }
@@ -88,6 +89,7 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                                 select: {
                                     id_variante: true,
                                     sku_variante: true,
+                                    codigo_barras: true,
                                     atributos_valores: true
                                 }
                             }
@@ -105,6 +107,7 @@ router.get('/:id_comercio', authMiddleware, async (req, res) => {
                         select: {
                             id_variante: true,
                             sku_variante: true,
+                            codigo_barras: true,
                             atributos_valores: true
                         }
                     }

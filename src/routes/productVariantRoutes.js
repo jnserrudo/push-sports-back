@@ -50,6 +50,57 @@ function generarSKU(atributosValores, productoNombre) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// GET - Validar unicidad de código de barras (a nivel Producto y Variante)
+// Debe ir antes de otras rutas con parámetros dinámicos
+// ═══════════════════════════════════════════════════════════
+router.get('/validar-codigo/:codigo', authMiddleware, async (req, res) => {
+    try {
+        const { codigo } = req.params;
+        const { exclude_id } = req.query;
+
+        // Verificar contra Producto.codigo_barras
+        const productoExistente = await prisma.producto.findFirst({
+            where: { codigo_barras: codigo },
+            select: { id_producto: true, nombre: true }
+        });
+
+        if (productoExistente) {
+            return res.json({
+                disponible: false,
+                error: `Este código ya está asignado al producto: ${productoExistente.nombre}`
+            });
+        }
+
+        // Verificar contra ProductoVariante.codigo_barras (excluyendo la propia variante)
+        const varianteExistente = await prisma.productoVariante.findFirst({
+            where: {
+                codigo_barras: codigo,
+                id_variante: exclude_id ? { not: exclude_id } : undefined
+            },
+            select: {
+                id_variante: true,
+                sku_variante: true,
+                atributos_valores: true,
+                producto: { select: { nombre: true } }
+            }
+        });
+
+        if (varianteExistente) {
+            const nombreVariante = Object.values(varianteExistente.atributos_valores || {}).join(' / ');
+            return res.json({
+                disponible: false,
+                error: `Este código ya está asignado a: ${varianteExistente.producto.nombre} - ${nombreVariante}`
+            });
+        }
+
+        res.json({ disponible: true });
+    } catch (error) {
+        console.error('Error validando código de variante:', error);
+        res.status(500).json({ error: 'Error al validar código' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════
 // GET - Listar variantes de un producto
 // ═══════════════════════════════════════════════════════════
 router.get('/productos/:id_producto/variantes', authMiddleware, async (req, res) => {
@@ -326,7 +377,7 @@ router.put('/variantes/:id_variante',
   async (req, res) => {
     try {
       const { id_variante } = req.params;
-      const { sku_variante, stock_central, precio_variante, activo } = req.body;
+      const { sku_variante, codigo_barras, stock_central, precio_variante, activo } = req.body;
       
       const variante = await prisma.productoVariante.findUnique({
         where: { id_variante }
@@ -338,6 +389,7 @@ router.put('/variantes/:id_variante',
       
       const data = {};
       if (sku_variante !== undefined) data.sku_variante = sku_variante;
+      if (codigo_barras !== undefined) data.codigo_barras = codigo_barras || null;
       if (stock_central !== undefined) data.stock_central = parseInt(stock_central);
       if (precio_variante !== undefined) data.precio_variante = parseFloat(precio_variante);
       if (activo !== undefined) data.activo = activo;
@@ -375,6 +427,9 @@ router.put('/variantes/:id_variante',
       
     } catch (error) {
       console.error('Error PUT variante:', error);
+      if (error.code === 'P2002' && error.meta?.target?.includes('codigo_barras')) {
+        return res.status(409).json({ error: 'Este código de barras ya está en uso por otra variante' });
+      }
       res.status(500).json({ error: 'Error al actualizar variante', detail: error.message });
     }
   }

@@ -71,6 +71,7 @@ model Producto {
   id_producto           String    @id @default(uuid()) @db.Uuid
   nombre                String
   descripcion           String?   @db.Text
+  codigo_barras         String?   @unique
   id_categoria          Int
   id_marca              Int
   id_proveedor          String?   @db.Uuid
@@ -499,6 +500,7 @@ model ProductoVariante {
   id_variante          String    @id @default(uuid()) @db.Uuid
   id_producto          String    @db.Uuid
   sku_variante         String?   @unique
+  codigo_barras        String?   @unique
   atributos_valores    Json      // {"SABOR": "VAINILLA", "TAMAÃ‘O": "1KG"}
   stock_central        Int       @default(0)
   precio_variante      Decimal   @db.Decimal(10, 2) @default(0)  // Precio especÃ­fico (0 = usar precio del producto)

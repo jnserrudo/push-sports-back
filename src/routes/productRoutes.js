@@ -3,6 +3,116 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
 
+// Validar código de barras (debe ir antes de /:id para no confundirlo)
+router.get('/validar-codigo/:codigo', authMiddleware, async (req, res) => {
+    try {
+        const { codigo } = req.params;
+        const { exclude_id } = req.query;
+        
+        const existe = await prisma.producto.findFirst({
+            where: {
+                codigo_barras: codigo,
+                id_producto: exclude_id ? { not: exclude_id } : undefined
+            },
+            select: { 
+                id_producto: true, 
+                nombre: true,
+                codigo_barras: true
+            }
+        });
+        
+        if (existe) {
+            return res.json({ 
+                disponible: false, 
+                error: `Este código ya está asignado a: ${existe.nombre}`,
+                producto_existente: existe 
+            });
+        }
+        
+        const varianteExistente = await prisma.productoVariante.findFirst({
+            where: {
+                codigo_barras: codigo
+            },
+            select: { 
+                id_variante: true, 
+                sku_variante: true, 
+                atributos_valores: true,
+                producto: { select: { nombre: true } }
+            }
+        });
+        
+        if (varianteExistente) {
+            const nombreVariante = Object.values(varianteExistente.atributos_valores || {}).join(' / ');
+            return res.json({ 
+                disponible: false, 
+                error: `Este código ya está asignado a: ${varianteExistente.producto.nombre} - ${nombreVariante}`,
+                variante_existente: varianteExistente 
+            });
+        }
+        
+        res.json({ disponible: true });
+    } catch (error) {
+        console.error('Error validando código:', error);
+        res.status(500).json({ error: 'Error al validar código' });
+    }
+});
+
+// Buscar producto (o variante) por código de barras escaneado (debe ir antes de /:id)
+router.get('/buscar-codigo/:codigo', authMiddleware, async (req, res) => {
+    try {
+        const { codigo } = req.params;
+
+        const includeCompleto = {
+            marca: true,
+            categoria: true,
+            codigo_producto: true,
+            inventarios: {
+                include: { comercio: { select: { nombre: true } } }
+            },
+            variantes: {
+                where: { activo: true },
+                select: {
+                    id_variante: true,
+                    sku_variante: true,
+                    codigo_barras: true,
+                    atributos_valores: true,
+                    stock_central: true,
+                    precio_variante: true,
+                    activo: true
+                }
+            }
+        };
+
+        // 1. Buscar primero a nivel producto
+        const productoMatch = await prisma.producto.findFirst({
+            where: { codigo_barras: codigo, activo: true },
+            include: includeCompleto
+        });
+
+        if (productoMatch) {
+            return res.json({ producto: productoMatch, variante_matched: null });
+        }
+
+        // 2. Buscar a nivel variante
+        const varianteMatch = await prisma.productoVariante.findFirst({
+            where: { codigo_barras: codigo, activo: true },
+            include: {
+                producto: { include: includeCompleto }
+            }
+        });
+
+        if (varianteMatch) {
+            const { producto, ...variante } = varianteMatch;
+            return res.json({ producto, variante_matched: variante });
+        }
+
+        return res.status(404).json({ error: `No se encontró ningún producto con el código: ${codigo}` });
+    } catch (error) {
+        console.error('Error GET /productos/buscar-codigo:', error);
+        res.status(500).json({ error: 'Error al buscar por código de barras' });
+    }
+});
+
 // Obtener todos los productos
 router.get('/', authMiddleware, async (req, res) => {
     try {
@@ -23,6 +133,7 @@ router.get('/', authMiddleware, async (req, res) => {
                     select: { 
                         id_variante: true, 
                         sku_variante: true, 
+                        codigo_barras: true,
                         atributos_valores: true,
                         stock_central: true,
                         activo: true
@@ -63,6 +174,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
                     select: { 
                         id_variante: true, 
                         sku_variante: true, 
+                        codigo_barras: true,
                         atributos_valores: true,
                         stock_central: true,
                         activo: true
@@ -92,7 +204,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
 
     try {
         const {
-            nombre, descripcion,
+            nombre, descripcion, codigo_barras,
             id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
             imagen_url, stock_minimo, stock_central, atributos
@@ -130,6 +242,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const data = {
             nombre: nombre.toUpperCase(),
             descripcion: descripcion || null,
+            codigo_barras: codigo_barras || null,
             id_categoria: parseInt(id_categoria),
             id_marca: parseInt(id_marca),
             id_proveedor: id_proveedor || null,
@@ -367,7 +480,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
     try {
         const { id } = req.params;
         const {
-            nombre, descripcion,
+            nombre, descripcion, codigo_barras,
             id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
             imagen_url, stock_minimo, stock_central, activo, atributos
@@ -376,6 +489,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const data = {};
         if (nombre !== undefined)                data.nombre = nombre.toUpperCase();
         if (descripcion !== undefined)           data.descripcion = descripcion || null;
+        if (codigo_barras !== undefined)         data.codigo_barras = codigo_barras || null;
         if (id_categoria !== undefined)          data.id_categoria = parseInt(id_categoria);
         if (id_marca !== undefined)              data.id_marca = parseInt(id_marca);
         if (id_proveedor !== undefined)          data.id_proveedor = id_proveedor || null;
