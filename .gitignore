@@ -1,5 +1,8 @@
 node_modules/
+uploads/
+backups/
 .env
+.env-del-vps
 .DS_Store
 *.log
 npm-debug.log*

@@ -11,6 +11,12 @@ console.log('✅ Dotenv configurado');
 const app = express();
 console.log('✅ App Express creada');
 
+const path = require('path');
+const fs = require('fs');
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+fs.mkdirSync(path.join(uploadsDir, 'productos'), { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
+
 // Middlewares básicos
 app.use(cors());
 app.use(express.json());
@@ -79,6 +85,7 @@ const rectificationRoutes = require('./src/routes/rectificationRoutes');
 const consultaRoutes = require('./src/routes/consultaRoutes');
 const impersonationRoutes = require('./src/routes/impersonationRoutes');
 const codigosProductoRoutes = require('./src/routes/codigosProducto.routes');
+const uploadRoutes = require('./src/routes/uploadRoutes');
 
 // Rutas Públicas (B2C) — SIN autenticación JWT
 app.use('/api/public', publicRoutes);
@@ -116,9 +123,9 @@ app.use('/api/rectificaciones', rectificationRoutes);
 app.use('/api/consultas', consultaRoutes);
 app.use('/api/impersonation', impersonationRoutes);
 app.use('/api/codigos-producto', codigosProductoRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Configuración de Swagger
-const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const swaggerFile = './swagger-output.json';
 

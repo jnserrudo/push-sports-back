@@ -8,6 +8,13 @@
     "dev": "nodemon index.js",
     "seed": "prisma db seed",
     "seed:rectificaciones": "node seed/rectificacionesSeed.js",
+    "backup:stock": "node prisma/backup_stock.js",
+    "reset-stock": "node prisma/reset_stock_y_asociar_central.js",
+    "reset-stock:execute": "node prisma/reset_stock_y_asociar_central.js --execute",
+    "reset-stock:associate": "node prisma/reset_stock_y_asociar_central.js --associate-only",
+    "reset-stock:associate:execute": "node prisma/reset_stock_y_asociar_central.js --associate-only --execute",
+    "migrate:images": "node prisma/migrate_images_to_local.js",
+    "migrate:images:execute": "node prisma/migrate_images_to_local.js --execute",
     "swagger": "node swagger.js",
     "postinstall": "prisma generate",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -27,6 +34,7 @@
     "express-validator": "^7.3.2",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "multer": "^2.0.2",
     "prisma": "6.19.2",
     "swagger-ui-express": "^5.0.1",
     "validator": "^13.15.35"
