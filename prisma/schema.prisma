@@ -98,8 +98,21 @@ model Producto {
   devoluciones          Devolucion[]
   consultas_items       ConsultaPedidoItem[]
   reportes_entrega_detalle ReporteEntregaDetalle[]
+  vencimientos          ProductoVencimiento[]
 
   @@map("PRODUCTOS")
+}
+
+model ProductoVencimiento {
+  id_vencimiento          String    @id @default(uuid()) @db.Uuid
+  id_producto             String    @db.Uuid
+  fecha_vencimiento       DateTime  @db.Date
+  vencimiento_alertado_el DateTime?
+
+  producto                Producto  @relation(fields: [id_producto], references: [id_producto], onDelete: Cascade)
+
+  @@unique([id_producto, fecha_vencimiento])
+  @@map("PRODUCTO_VENCIMIENTOS")
 }
 
 model Categoria {

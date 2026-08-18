@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const { authMiddleware, roleMiddleware } = require('../middlewares/authMiddleware');
+const {
+    parseVencimientosInput,
+    sanitizeProducto,
+    syncVencimientos,
+    notifyDueDatesForProduct,
+} = require('../services/vencimientoAlertService');
 
 // Validar código de barras (debe ir antes de /:id para no confundirlo)
 router.get('/validar-codigo/:codigo', authMiddleware, async (req, res) => {
@@ -126,6 +132,7 @@ router.get('/', authMiddleware, async (req, res) => {
                 categoria: true, 
                 proveedor: true,
                 codigo_producto: true,
+                vencimientos: req.user.id_rol === 1,
                 inventarios: {
                     select: { cantidad_actual: true }
                 },
@@ -148,7 +155,7 @@ router.get('/', authMiddleware, async (req, res) => {
             const inventarios = p.inventarios || [];
             const total = inventarios.reduce((acc, inv) => acc + (inv.cantidad_actual || 0), 0);
             const { inventarios: _, ...rest } = p; // Usamos _ para descartar inventarios del objeto final
-            return { ...rest, stock_total: total };
+            return { ...sanitizeProducto({ ...rest, stock_total: total }, req.user.id_rol) };
         });
 
         res.json(result);
@@ -169,6 +176,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
                 categoria: true, 
                 proveedor: true,
                 codigo_producto: true,
+                vencimientos: req.user.id_rol === 1,
                 inventarios: { select: { cantidad_actual: true } },
                 variantes: {
                     select: { 
@@ -189,7 +197,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         const total = inventarios.reduce((acc, inv) => acc + (inv.cantidad_actual || 0), 0);
         const { inventarios: _, ...rest } = producto;
         
-        res.json({ ...rest, stock_total: total });
+        res.json(sanitizeProducto({ ...rest, stock_total: total }, req.user.id_rol));
     } catch (error) {
         console.error('Error GET /productos/:id:', error);
         res.status(500).json({ error: 'Error al obtener producto' });
@@ -207,7 +215,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             nombre, descripcion, codigo_barras,
             id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
-            imagen_url, stock_minimo, stock_central, atributos
+            imagen_url, stock_minimo, stock_central, atributos, vencimientos
         } = req.body;
 
         console.log('Campos extraídos:', {
@@ -276,9 +284,27 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
 
         console.log('Datos a insertar en DB:', data);
 
+        let dates = [];
+        try {
+            dates = parseVencimientosInput(vencimientos === undefined ? [] : vencimientos);
+        } catch (e) {
+            if (e.status === 400) return res.status(400).json({ error: e.message });
+            throw e;
+        }
+
         const producto = await prisma.producto.create({
             data,
-            include: { marca: true, categoria: true, proveedor: true }
+            include: { marca: true, categoria: true, proveedor: true, vencimientos: true }
+        });
+
+        if (dates.length) {
+            await syncVencimientos(producto.id_producto, dates);
+            await notifyDueDatesForProduct(producto.id_producto, producto.nombre);
+        }
+
+        const withDates = await prisma.producto.findUnique({
+            where: { id_producto: producto.id_producto },
+            include: { marca: true, categoria: true, proveedor: true, vencimientos: true }
         });
 
         console.log('Producto creado exitosamente:', {
@@ -288,7 +314,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             marca: producto.marca?.nombre
         });
 
-        res.status(201).json(producto);
+        res.status(201).json(sanitizeProducto(withDates, req.user.id_rol));
     } catch (error) {
         console.error('========== ERROR EN CREACIÓN DE PRODUCTO ==========');
         console.error('Error completo:', error);
@@ -483,7 +509,7 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
             nombre, descripcion, codigo_barras,
             id_categoria, id_marca, id_proveedor, id_codigo_producto,
             precio_venta_sugerido, precio_pushsport, costo_compra,
-            imagen_url, stock_minimo, stock_central, activo, atributos
+            imagen_url, stock_minimo, stock_central, activo, atributos, vencimientos
         } = req.body;
 
         const data = {};
@@ -519,9 +545,25 @@ router.put('/:id', authMiddleware, roleMiddleware([1, 2]), async (req, res) => {
         const producto = await prisma.producto.update({
             where: { id_producto: id },
             data,
-            include: { marca: true, categoria: true, proveedor: true }
+            include: { marca: true, categoria: true, proveedor: true, vencimientos: true }
         });
-        res.json(producto);
+
+        if (vencimientos !== undefined) {
+            try {
+                const dates = parseVencimientosInput(vencimientos);
+                await syncVencimientos(id, dates);
+                await notifyDueDatesForProduct(id, producto.nombre);
+            } catch (e) {
+                if (e.status === 400) return res.status(400).json({ error: e.message });
+                throw e;
+            }
+        }
+
+        const withDates = await prisma.producto.findUnique({
+            where: { id_producto: id },
+            include: { marca: true, categoria: true, proveedor: true, vencimientos: true }
+        });
+        res.json(sanitizeProducto(withDates, req.user.id_rol));
     } catch (error) {
         console.error('Error PUT /productos:', error);
         res.status(500).json({ error: 'Error al actualizar producto' });

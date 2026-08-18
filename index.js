@@ -145,6 +145,8 @@ const server = app.listen(PORT, () => {
     console.log(`🔗 Health check: http://localhost:${PORT}/health`);
     console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
     console.log('🟢 Servidor completamente iniciado y listo para recibir peticiones');
+    const { startVencimientoJob } = require('./src/services/vencimientoAlertService');
+    startVencimientoJob();
 });
 
 // Forzar que el servidor se mantenga activo
