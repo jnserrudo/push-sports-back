@@ -22,7 +22,7 @@ const liquidationService = {
       include: {
         detalles: {
             include: {
-                producto: { select: { nombre: true, usa_variantes: true, codigo_relacion: { select: { codigo: true } } } },
+                producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_relacion: { select: { codigo: true } } } },
                 variantes: {
                     include: {
                         variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -35,15 +35,26 @@ const liquidationService = {
       orderBy: { fecha_hora: 'asc' }
     });
 
+    const comercio = await prisma.comercio.findUnique({
+      where: { id_comercio },
+      select: { saldo_acumulado_mili: true, nombre: true, activo: true }
+    });
+    const saldoAcumulado = Number(comercio?.saldo_acumulado_mili || 0);
+
     if (ventasPendientes.length === 0) {
       return {
         hayDatos: false,
+        saldoHuerfano: saldoAcumulado > 0,
+        comercioNombre: comercio?.nombre || '',
+        comercioActivo: comercio?.activo !== false,
         cantVentas: 0,
         totalVentasBruto: 0,
         totalVentasNeto: 0,
+        saldoAcumulado,
         totalDevoluciones: 0,
         netoFinal: 0,
         desgloseMetodoPago: {},
+        resumenProductos: [],
         rangoFechas: null,
         ventas: []
       };
@@ -107,7 +118,8 @@ const liquidationService = {
             total_bruto: 0, 
             total_neto: 0,
             precio_unitario_publico: parseFloat(detalle.precio_unitario_cobrado) || 0,
-            precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0
+            precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0,
+            precio_unitario_push_actual: parseFloat(detalle.producto?.precio_pushsport) || 0
           };
         }
         desgloseMap[nombre].cantidad += detalle.cantidad;
@@ -139,36 +151,36 @@ const liquidationService = {
     const fechaDesde = ventasPendientes[0].fecha_hora;
     const fechaHasta = ventasPendientes[ventasPendientes.length - 1].fecha_hora;
 
-    // 5. Comercio con saldo actual
-    const comercio = await prisma.comercio.findUnique({
-      where: { id_comercio },
-      select: { saldo_acumulado_mili: true, nombre: true }
-    });
-
     return {
       hayDatos: true,
+      saldoHuerfano: false,
       comercioNombre: comercio?.nombre || '',
+      comercioActivo: comercio?.activo !== false,
       cantVentas: ventasPendientes.length,
       totalVentasBruto: Math.round(totalVentasBruto * 100) / 100,
       totalVentasNeto: Math.round(totalVentasNeto * 100) / 100,
-      saldoAcumulado: Number(comercio?.saldo_acumulado_mili || 0),
+      saldoAcumulado,
       totalDevoluciones: Math.round(totalDevoluciones * 100) / 100,
       cantDevoluciones: devoluciones.length,
-      netoFinal: Number(comercio?.saldo_acumulado_mili || 0),
+      netoFinal: Math.round(totalVentasNeto * 100) / 100,
       desgloseMetodoPago,
       resumenProductos,
       rangoFechas: {
         desde: fechaDesde,
         hasta: fechaHasta
       },
-      ventas: ventasPendientes.map(v => ({
-        id_venta: v.id_venta,
-        fecha: v.fecha_hora,
-        total: Number(v.total_venta),
-        metodo_pago: v.metodo_pago,
-        vendedor: v.usuario ? `${v.usuario.nombre} ${v.usuario.apellido}` : 'N/A',
-        cantItems: v.detalles.reduce((a, d) => a + d.cantidad, 0)
-      }))
+      ventas: ventasPendientes.map(v => {
+        const neto = v.detalles.reduce((acc, d) => acc + (parseFloat(d.precio_pushsport_historico) || 0) * d.cantidad, 0);
+        return {
+          id_venta: v.id_venta,
+          fecha: v.fecha_hora,
+          total: Number(v.total_venta),
+          neto,
+          metodo_pago: v.metodo_pago,
+          vendedor: v.usuario ? `${v.usuario.nombre} ${v.usuario.apellido}` : 'N/A',
+          cantItems: v.detalles.reduce((a, d) => a + d.cantidad, 0)
+        };
+      })
     };
   },
 
@@ -177,7 +189,7 @@ const liquidationService = {
    * Ahora acepta monto_recibido opcional para registrar diferencias.
    * Si se pasa id_ventas, solo liquidar esas ventas activas y no liquidadas.
    */
-  async generateLiquidation({ id_comercio, monto_recibido, observacion, id_usuario, id_ventas = null }) {
+  async generateLiquidation({ id_comercio, monto_recibido, observacion, id_usuario, id_ventas = null, descuento_comercial = 0 }) {
     // Prevenir timeouts largos y optimizar la auditoría fijando el usuario
     if (id_usuario) {
       const { setAuditUser } = require('./auditService');
@@ -200,7 +212,7 @@ const liquidationService = {
         include: {
           detalles: {
               include: {
-                  producto: { select: { nombre: true, usa_variantes: true, codigo_relacion: { select: { codigo: true } } } },
+                  producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_relacion: { select: { codigo: true } } } },
                   variantes: {
                       include: {
                           variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -269,7 +281,8 @@ const liquidationService = {
               total_bruto: 0, 
               total_neto: 0,
               precio_unitario_publico: parseFloat(detalle.precio_unitario_cobrado) || 0,
-              precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0
+              precio_unitario_push: parseFloat(detalle.precio_pushsport_historico) || 0,
+              precio_unitario_push_actual: parseFloat(detalle.producto?.precio_pushsport) || 0
             };
           }
           desgloseMap[nombre].cantidad += detalle.cantidad;
@@ -285,18 +298,23 @@ const liquidationService = {
         select: { saldo_acumulado_mili: true }
       });
       const saldoReal = Number(comercio?.saldo_acumulado_mili || 0);
+      const netoSeleccionado = Math.round(totalVentasNetas * 100) / 100;
+      const descuento = Math.min(Math.max(0, parseFloat(descuento_comercial) || 0), netoSeleccionado);
+      const aCobrar = Math.round((netoSeleccionado - descuento) * 100) / 100;
 
-      // 4. Calcular monto recibido y diferencia
-      // Si Mili especificó cuánto recibió, usamos ese valor. Si no, asumimos el saldo real.
-      const montoRecibido = (monto_recibido !== undefined && monto_recibido !== null) 
-        ? parseFloat(monto_recibido) 
-        : saldoReal;
-      const diferencia = montoRecibido - saldoReal;
+      // 4. Recibido = plata física. A cobrar = neto de estas ventas menos descuento comercial.
+      const montoRecibido = (monto_recibido !== undefined && monto_recibido !== null)
+        ? parseFloat(monto_recibido)
+        : aCobrar;
+      const diferencia = Math.round((montoRecibido - aCobrar) * 100) / 100;
 
       // 5. Metadata enriquecida para la observación
       const metadata = {
         cant_ventas: ventasPendientes.length,
         total_bruto: Math.round(totalVentasBruto * 100) / 100,
+        neto_ventas: netoSeleccionado,
+        descuento_comercial: descuento,
+        a_cobrar: aCobrar,
         desglose_metodo_pago: desgloseMetodoPago,
         resumen_productos: resumenProductos,
         saldo_al_cerrar: saldoReal,
@@ -310,7 +328,7 @@ const liquidationService = {
       const liquidacion = await tx.liquidacion.create({
         data: {
           id_comercio,
-          total_ventas_netas: saldoReal,
+          total_ventas_netas: aCobrar,
           monto_recibido: montoRecibido,
           diferencia: Math.round(diferencia * 100) / 100,
           observacion: obsConMetadata,
@@ -328,10 +346,11 @@ const liquidationService = {
         },
       });
 
-      // 8. Resetear saldo a 0
+      // 8. Restar solo el neto de las ventas liquidadas (no poner 0 si quedan pendientes)
+      const saldoRestante = Math.max(0, Math.round((saldoReal - netoSeleccionado) * 100) / 100);
       await tx.comercio.update({
         where: { id_comercio },
-        data: { saldo_acumulado_mili: 0 }
+        data: { saldo_acumulado_mili: saldoRestante }
       });
 
       return {
@@ -388,9 +407,26 @@ const liquidationService = {
         total_bruto: metadata.total_bruto || liq.ventas.reduce((a, v) => a + Number(v.total_venta), 0),
         desglose_metodo_pago: metadata.desglose_metodo_pago || {},
         resumen_productos: metadata.resumen_productos || [],
+        descuento_comercial: Number(metadata.descuento_comercial || 0),
+        neto_ventas: Number(metadata.neto_ventas || liq.total_ventas_netas),
         ventas: liq.ventas
       };
     });
+  },
+
+  async ajustarSaldoHuerfano(id_comercio) {
+    const pendientes = await prisma.ventaCabecera.count({
+      where: { id_comercio, id_liquidacion: null, estado: 'ACTIVA' }
+    });
+    if (pendientes > 0) {
+      throw new Error('Todavía hay ventas activas sin liquidar. Liquidá esos tickets; no se puede ajustar el saldo.');
+    }
+    const comercio = await prisma.comercio.update({
+      where: { id_comercio },
+      data: { saldo_acumulado_mili: 0 },
+      select: { id_comercio: true, nombre: true, saldo_acumulado_mili: true }
+    });
+    return comercio;
   }
 };
 

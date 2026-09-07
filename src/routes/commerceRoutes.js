@@ -41,7 +41,16 @@ router.get('/', authMiddleware, async (req, res) => {
 
         const comercios = await prisma.comercio.findMany({
             where: canSeeInactive ? {} : { activo: true },
-            include: { tipo_comercio: true }
+            include: {
+                tipo_comercio: true,
+                _count: {
+                    select: {
+                        ventas_registradas: {
+                            where: { id_liquidacion: null, estado: 'ACTIVA' }
+                        }
+                    }
+                }
+            }
         });
         res.json(comercios);
     } catch (error) {
