@@ -43,16 +43,43 @@ router.get('/', authMiddleware, async (req, res) => {
             where: canSeeInactive ? {} : { activo: true },
             include: {
                 tipo_comercio: true,
-                _count: {
+                ventas_registradas: {
+                    where: { id_liquidacion: null, estado: 'ACTIVA' },
                     select: {
-                        ventas_registradas: {
-                            where: { id_liquidacion: null, estado: 'ACTIVA' }
+                        total_venta: true,
+                        fecha_hora: true,
+                        detalles: {
+                            select: { precio_pushsport_historico: true, cantidad: true }
                         }
-                    }
+                    },
+                    orderBy: { fecha_hora: 'desc' }
                 }
             }
         });
-        res.json(comercios);
+
+        const netoPush = (venta) => (venta.detalles || []).reduce(
+            (acc, d) => acc + (parseFloat(d.precio_pushsport_historico) || 0) * d.cantidad,
+            0
+        );
+
+        const mapped = comercios.map(({ ventas_registradas = [], ...comercio }) => {
+            const tickets = ventas_registradas.length;
+            const ultima = ventas_registradas[0] || null;
+            const ultimaPush = ultima ? netoPush(ultima) : 0;
+            const anterioresPush = ventas_registradas.slice(1).reduce((acc, v) => acc + netoPush(v), 0);
+            return {
+                ...comercio,
+                _count: { ventas_registradas: tickets },
+                resumen_pendiente: {
+                    tickets,
+                    ultima_push: Math.round(ultimaPush * 100) / 100,
+                    ultima_publico: ultima ? Math.round(Number(ultima.total_venta) * 100) / 100 : 0,
+                    ultima_fecha: ultima?.fecha_hora || null,
+                    anteriores_push: Math.round(anterioresPush * 100) / 100
+                }
+            };
+        });
+        res.json(mapped);
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener comercios' });
     }

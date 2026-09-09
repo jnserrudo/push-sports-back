@@ -22,7 +22,7 @@ const liquidationService = {
       include: {
         detalles: {
             include: {
-                producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_relacion: { select: { codigo: true } } } },
+                producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_producto: { select: { codigo: true } } } },
                 variantes: {
                     include: {
                         variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -89,7 +89,7 @@ const liquidationService = {
     for (const venta of ventasPendientes) {
       for (const detalle of venta.detalles) {
         let nombre = detalle.producto?.nombre || 'Producto Desconocido';
-        let codigo = detalle.producto?.codigo_relacion?.codigo || '';
+        let codigo = detalle.producto?.codigo_producto?.codigo || '';
         
         // Agregar info de variante — verificar datos reales en lugar del flag
         if (detalle.variantes && detalle.variantes.length > 0) {
@@ -212,7 +212,7 @@ const liquidationService = {
         include: {
           detalles: {
               include: {
-                  producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_relacion: { select: { codigo: true } } } },
+                  producto: { select: { nombre: true, usa_variantes: true, precio_pushsport: true, codigo_producto: { select: { codigo: true } } } },
                   variantes: {
                       include: {
                           variante: { select: { id_variante: true, sku_variante: true, atributos_valores: true } }
@@ -254,7 +254,7 @@ const liquidationService = {
       for (const venta of ventasPendientes) {
         for (const detalle of venta.detalles) {
           let nombre = detalle.producto?.nombre || 'Producto Desconocido';
-          let codigo = detalle.producto?.codigo_relacion?.codigo || '';
+          let codigo = detalle.producto?.codigo_producto?.codigo || '';
           
           if (detalle.variantes && detalle.variantes.length > 0) {
             const varRel = detalle.variantes[0];
