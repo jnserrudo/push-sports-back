@@ -291,6 +291,8 @@ model VentaCabecera {
   total_venta      Decimal  @db.Decimal(10, 2)
   metodo_pago      String
   fecha_hora       DateTime @default(now())
+  codigo_descuento String?
+  monto_descuento  Decimal  @default(0) @db.Decimal(10, 2)
 
   // Campos de estado y rectificaciÃ³n
   estado                String   @default("ACTIVA") // ACTIVA | RECTIFICADA | ANULADA | LIQUIDADA
@@ -323,6 +325,9 @@ model VentaDetalle {
   precio_unitario_cobrado    Decimal  @db.Decimal(10, 2)
   precio_pushsport_historico Decimal  @default(0) @db.Decimal(10, 2)
   costo_unitario_historico   Decimal  @db.Decimal(10, 2)
+  precio_lista             Decimal?  @db.Decimal(10, 2)
+  descuento_tipo           String?
+  descuento_valor          Decimal?  @db.Decimal(10, 2)
   tiene_variantes          Boolean   @default(false)
 
   venta                    VentaCabecera @relation(fields: [id_venta], references: [id_venta])

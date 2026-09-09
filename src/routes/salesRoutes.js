@@ -11,7 +11,7 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
     try {
         console.log('[DEBUG salesRoutes] Body recibido:', JSON.stringify(req.body, null, 2));
         
-        const { id_comercio, detalles, metodo_pago } = req.body;
+        const { id_comercio, detalles, metodo_pago, codigo_descuento } = req.body;
         const id_usuario = req.user.id_usuario; // Usar ID del token
 
         // 1. Validar que el usuario tenga permiso para vender en este comercio
@@ -32,9 +32,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
         const detallesProcesados = [];
 
         for (const item of detalles) {
-             const { id_producto, id_variante, cantidad, precio_unitario } = item;
+             const { id_producto, id_variante, cantidad, precio_unitario, precio_push, precio_lista, descuento_tipo, descuento_valor } = item;
 
-             if (!id_producto || cantidad <= 0 || !precio_unitario) {
+             if (!id_producto || cantidad <= 0 || precio_unitario === undefined || precio_unitario === null || precio_unitario === '') {
                   return res.status(400).json({ error: 'Detalle de formato inválido.' });
              }
 
@@ -96,10 +96,12 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
 
              const subtotal = parseFloat(precio_unitario) * cantidad;
              
-             // Nueva lógica: La sede central (Mili) cobra el PRECIO PUSH SPORT.
-             // La ganancia del comercio es la diferencia entre el precio de venta y el pushsport.
-             const pPushsport = parseFloat(producto.precio_pushsport) || 0;
-             const neto = pPushsport * cantidad; // Lo que Mili recibe
+             const pushLista = parseFloat(producto.precio_pushsport) || 0;
+             const pushPedido = parseFloat(precio_push);
+             const pPushsport = Number.isFinite(pushPedido)
+                 ? Math.max(0, Math.min(pushLista, pushPedido))
+                 : pushLista;
+             const neto = pPushsport * cantidad;
              const comision_monto = subtotal - neto; // La ganancia de la sucursal
              
              const costo_unitario_historico = producto.costo_compra;
@@ -108,14 +110,54 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
 
              detallesProcesados.push({
                  id_producto,
-                 id_variante, // puede ser null
+                 id_variante,
                  cantidad,
-                 precio_unitario_cobrado: precio_unitario,
+                 precio_unitario_cobrado: parseFloat(precio_unitario),
                  precio_pushsport_historico: pPushsport,
                  costo_unitario_historico,
-                  _neto: neto,
+                 precio_lista: precio_lista != null ? parseFloat(precio_lista) : parseFloat(precio_unitario),
+                 descuento_tipo: descuento_tipo || null,
+                 descuento_valor: descuento_valor != null && descuento_valor !== '' ? parseFloat(descuento_valor) : null,
+                 _neto: neto,
                  usa_variantes: usaVariante
              });
+        }
+
+        const round2 = (n) => Math.round(Number(n) * 100) / 100;
+        total_venta_cabecera = round2(detallesProcesados.reduce((acc, d) => acc + Number(d.precio_unitario_cobrado) * d.cantidad, 0));
+
+        let codigoDescuentoGuardado = null;
+        let montoDescuentoGuardado = 0;
+        let idDescuentoUsado = null;
+
+        if (codigo_descuento) {
+            const cupon = await prisma.descuento.findFirst({
+                where: { codigo: String(codigo_descuento).toUpperCase(), activo: true }
+            });
+            if (!cupon) {
+                return res.status(400).json({ error: 'El código de descuento no es válido o está inactivo' });
+            }
+            if (cupon.usos_maximos !== null && cupon.usos_actuales >= cupon.usos_maximos) {
+                return res.status(400).json({ error: 'El código ya alcanzó el límite de usos' });
+            }
+            const sub = total_venta_cabecera;
+            let monto = 0;
+            if (cupon.tipo_descuento === 'porcentaje') {
+                monto = sub * (parseFloat(cupon.valor_descuento) / 100);
+            } else {
+                monto = Math.min(parseFloat(cupon.valor_descuento), sub);
+            }
+            monto = round2(Math.min(monto, sub));
+            const ratio = sub > 0 ? (sub - monto) / sub : 1;
+            for (const d of detallesProcesados) {
+                d.precio_unitario_cobrado = round2(d.precio_unitario_cobrado * ratio);
+                d.precio_pushsport_historico = round2(d.precio_pushsport_historico * ratio);
+                d._neto = round2(d.precio_pushsport_historico * d.cantidad);
+            }
+            total_venta_cabecera = round2(detallesProcesados.reduce((acc, d) => acc + Number(d.precio_unitario_cobrado) * d.cantidad, 0));
+            codigoDescuentoGuardado = cupon.codigo;
+            montoDescuentoGuardado = monto;
+            idDescuentoUsado = cupon.id_descuento;
         }
 
         // 3. Iniciar transacción principal para cabecera, detalles y stock
@@ -127,7 +169,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                      id_usuario,
                      total_venta: total_venta_cabecera,
                      metodo_pago,
-                     estado: 'ACTIVA'
+                     estado: 'ACTIVA',
+                     codigo_descuento: codigoDescuentoGuardado,
+                     monto_descuento: montoDescuentoGuardado
                  }
              });
 
@@ -138,6 +182,9 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                  precio_unitario_cobrado: d.precio_unitario_cobrado,
                  precio_pushsport_historico: d.precio_pushsport_historico,
                  costo_unitario_historico: d.costo_unitario_historico,
+                 precio_lista: d.precio_lista,
+                 descuento_tipo: d.descuento_tipo,
+                 descuento_valor: d.descuento_valor,
                  id_venta: nuevaVenta.id_venta,
                  tiene_variantes: d.usa_variantes
              }));
@@ -248,6 +295,13 @@ router.post('/', authMiddleware, roleMiddleware([1, 2, 3]), async (req, res) => 
                      }
                  }
              });
+
+             if (idDescuentoUsado) {
+                 await tx.descuento.update({
+                     where: { id_descuento: idDescuentoUsado },
+                     data: { usos_actuales: { increment: 1 } }
+                 });
+             }
 
              return { ventaCabecera: nuevaVenta, detallesCount: detallesProcesados.length };
         }, {

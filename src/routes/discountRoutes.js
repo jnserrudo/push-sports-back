@@ -34,20 +34,14 @@ router.post('/validar', authMiddleware, async (req, res) => {
 
         const totalFinal = Math.max(0, sub - montoDescuento);
 
-        // Incrementar usos
-        await prisma.descuento.update({
-            where: { id_descuento: descuento.id_descuento },
-            data: { usos_actuales: { increment: 1 } }
-        });
-
         res.json({
             valido: true,
             id_descuento: descuento.id_descuento,
             codigo: descuento.codigo,
             tipo_descuento: descuento.tipo_descuento,
             valor_descuento: parseFloat(descuento.valor_descuento),
-            monto_descuento: montoDescuento,
-            total_final: totalFinal
+            monto_descuento: Math.round(montoDescuento * 100) / 100,
+            total_final: Math.round(totalFinal * 100) / 100
         });
     } catch (error) {
         console.error(error);
