@@ -161,7 +161,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
                 WHERE vc.fecha_hora >= ${treintaDiasAtras}
                     AND vc.estado IN ('ACTIVA', 'LIQUIDADA')
                     AND vc.tipo_venta = 'VENTA'
-                    AND vc.id_comercio = ${targetSucursalId}
+                    AND vc.id_comercio = ${targetSucursalId}::uuid
                 GROUP BY vd.id_producto, p.nombre
                 ORDER BY cantidad DESC
                 LIMIT 5
