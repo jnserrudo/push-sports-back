@@ -20,6 +20,7 @@ router.get('/catalog', async (req, res) => {
                 precio_venta_sugerido: true, // Precio al público
                 imagen_url: true,
                 usa_variantes: true,
+                atributos: true, // para detectar productos con consultar_precio (ej. migración SNS sin precio)
                 marca: { select: { nombre_marca: true } },
                 categoria: { select: { nombre: true } },
                 variantes: {
@@ -60,6 +61,7 @@ router.get('/catalog', async (req, res) => {
                 marca: prod.marca?.nombre_marca || '',
                 categoria: prod.categoria?.nombre || '',
                 usa_variantes: prod.usa_variantes,
+                consultar_precio: prod.atributos?.consultar_precio === true || !Number(prod.precio_venta_sugerido) || Number(prod.precio_venta_sugerido) <= 0,
                 variantes: prod.variantes,
                 disponibilidad: disponibleEn
             };

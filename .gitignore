@@ -19,3 +19,7 @@ implementation_plan_backend.md.resolved
 *check*.js
 
 *.sql
+
+# Archivos temporales de migracion SNS (scripts _*.js, dumps _*.json, reportes)
+_*
+*.xlsx
