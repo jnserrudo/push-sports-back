@@ -41,6 +41,15 @@ router.get('/catalog', async (req, res) => {
             orderBy: { nombre: 'asc' }
         });
 
+        // Unidades vendidas por producto (ventas ACTIVA + LIQUIDADA; se excluyen
+        // ANULADA y RECTIFICADA porque la rectificacion genera una venta nueva)
+        const ventas = await prisma.ventaDetalle.groupBy({
+            by: ['id_producto'],
+            _sum: { cantidad: true },
+            where: { venta: { estado: { in: ['ACTIVA', 'LIQUIDADA'] } } }
+        });
+        const vendidosPorId = new Map(ventas.map(v => [v.id_producto, v._sum.cantidad || 0]));
+
         // Formatear el resultado para que el frontend entienda fácilmente dónde hay stock
         const catalogFormateado = productos.map(prod => {
             // Filtrar comercios donde existan más de 0 unidades
@@ -62,10 +71,14 @@ router.get('/catalog', async (req, res) => {
                 categoria: prod.categoria?.nombre || '',
                 usa_variantes: prod.usa_variantes,
                 consultar_precio: prod.atributos?.consultar_precio === true || !Number(prod.precio_venta_sugerido) || Number(prod.precio_venta_sugerido) <= 0,
+                vendidos: vendidosPorId.get(prod.id_producto) || 0,
                 variantes: prod.variantes,
                 disponibilidad: disponibleEn
             };
         });
+
+        // Orden por defecto: mas vendidos primero, desempate alfabetico
+        catalogFormateado.sort((a, b) => b.vendidos - a.vendidos || a.nombre.localeCompare(b.nombre));
 
         res.json(catalogFormateado);
     } catch (error) {
