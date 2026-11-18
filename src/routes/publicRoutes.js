@@ -34,7 +34,9 @@ router.get('/catalog', async (req, res) => {
                 inventarios: {
                     select: {
                         cantidad_actual: true,
-                        comercio: { select: { id_comercio: true, nombre: true } }
+                        usa_desglose_variantes: true,
+                        comercio: { select: { id_comercio: true, nombre: true } },
+                        variantes: { select: { cantidad_actual: true } }
                     }
                 }
             },
@@ -50,15 +52,23 @@ router.get('/catalog', async (req, res) => {
         });
         const vendidosPorId = new Map(ventas.map(v => [v.id_producto, v._sum.cantidad || 0]));
 
+        const stockInventario = (inv) => {
+            if (inv.usa_desglose_variantes && inv.variantes?.length) {
+                return inv.variantes.reduce((sum, v) => sum + (v.cantidad_actual || 0), 0);
+            }
+            return inv.cantidad_actual || 0;
+        };
+
         // Formatear el resultado para que el frontend entienda fácilmente dónde hay stock
         const catalogFormateado = productos.map(prod => {
-            // Filtrar comercios donde existan más de 0 unidades
+            // Filtrar comercios donde existan más de 0 unidades (incluye suma de variantes)
             const disponibleEn = prod.inventarios
-                .filter(inv => inv.cantidad_actual > 0)
-                .map(inv => ({
+                .map(inv => ({ inv, cantidad: stockInventario(inv) }))
+                .filter(({ cantidad }) => cantidad > 0)
+                .map(({ inv, cantidad }) => ({
                     id: inv.comercio.id_comercio,
                     sucursal: inv.comercio.nombre,
-                    cantidad: inv.cantidad_actual // Necesario para validar stock en checkout
+                    cantidad // Necesario para validar stock en checkout
                 }));
 
             return {
